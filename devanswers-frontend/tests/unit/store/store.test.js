@@ -20,6 +20,7 @@ describe('Redux Store Configuration', () => {
     expect(bookmark.idsStatus).toBe('idle');
     expect(bookmark.itemsStatus).toBe('idle');
     expect(bookmark.error).toBeNull();
+    expect(bookmark.itemsError).toBeNull();
   });
 
   it('should initialize user state correctly', () => {

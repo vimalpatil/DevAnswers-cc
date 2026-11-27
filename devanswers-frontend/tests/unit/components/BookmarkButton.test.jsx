@@ -11,6 +11,7 @@ import { seedBookmarks } from '../../mocks/handlers';
 import { mockQuestions } from '../../mocks/mockData';
 import BookmarkButton from '../../../src/components/Shared/BookmarkButton';
 import bookmarkReducer, { fetchBookmarkIds } from '../../../src/reducers/bookmarkSlice';
+import { logout } from '../../../src/reducers/userSlice';
 
 const BASE_URL = 'http://localhost:3000/api';
 const question = mockQuestions[0]; // question-1
@@ -136,6 +137,32 @@ describe('BookmarkButton', () => {
 
     await waitFor(() => expect(alertSpy).toHaveBeenCalledWith('Question not found'));
     expect(screen.getByRole('button', { name: 'Bookmark question' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('shows no error alert for a request that fails after logout', async () => {
+    server.use(
+      http.put(`${BASE_URL}/bookmarks/:questionId`, async () => {
+        await delay(50);
+        return HttpResponse.json({ message: 'Server exploded' }, { status: 500 });
+      })
+    );
+    const store = configureStore({
+      reducer: {
+        user: (state = { userInfo: { token: 'tok', userId: 'user-1' } }, action) =>
+          action.type === logout.type ? { userInfo: null } : state,
+        bookmark: bookmarkReducer,
+      },
+    });
+    renderButton(store);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Bookmark question' }));
+    store.dispatch(logout());
+
+    // Logged out: the control shows not-bookmarked and is no longer pending
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Bookmark question' })).not.toBeDisabled());
+    await new Promise((resolve) => setTimeout(resolve, 100)); // let the failed PUT land
+    expect(alertSpy).not.toHaveBeenCalled();
+    expect(store.getState().bookmark.ids).toEqual({});
   });
 
   it('does not trigger a parent Link', async () => {

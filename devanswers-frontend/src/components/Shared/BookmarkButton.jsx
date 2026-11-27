@@ -38,13 +38,13 @@ const BookmarkButton = ({ question, className = '', size, variant = 'link' }) =>
 
     if (isPending) return;
 
-    const action = isBookmarked ? removeBookmark(questionId) : addBookmark(question);
-    try {
-      await dispatch(action).unwrap();
-    } catch (error) {
-      // A skipped duplicate toggle isn't a failure
-      if (error?.name === 'ConditionError') return;
-      alert(typeof error === 'string' ? error : 'Failed to update bookmark');
+    const thunk = isBookmarked ? removeBookmark : addBookmark;
+    const result = await dispatch(thunk(isBookmarked ? questionId : question));
+
+    // No alert for a skipped duplicate toggle (meta.condition), or for a request
+    // whose session ended while it was in flight (meta.stale, e.g. after logout)
+    if (thunk.rejected.match(result) && !result.meta.condition && !result.meta.stale) {
+      alert(result.payload || 'Failed to update bookmark');
     }
   };
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { configureStore } from '@reduxjs/toolkit';
-import { http, HttpResponse } from 'msw';
+import { http, HttpResponse, delay } from 'msw';
 import { server } from '../../mocks/server';
 import { seedBookmarks } from '../../mocks/handlers';
 import { mockBookmarkedQuestions, mockQuestions } from '../../mocks/mockData';
@@ -14,6 +14,7 @@ import bookmarkReducer, {
   selectIsBookmarkPending,
   selectBookmarks,
   selectBookmarksStatus,
+  selectBookmarksError,
 } from '../../../src/reducers/bookmarkSlice';
 
 const BASE_URL = 'http://localhost:3000/api';
@@ -92,7 +93,7 @@ describe('bookmarkSlice', () => {
       await store.dispatch(fetchBookmarks());
 
       expect(selectBookmarksStatus(store.getState())).toBe('rejected');
-      expect(store.getState().bookmark.error).toBe('Server exploded');
+      expect(selectBookmarksError(store.getState())).toBe('Server exploded');
     });
   });
 
@@ -192,6 +193,163 @@ describe('bookmarkSlice', () => {
       await promise;
 
       expect(store.getState().bookmark.ids).toEqual({});
+    });
+  });
+
+  // A logs out and B logs in while A's requests are still in flight.
+  // Nothing from A's session may land in B's state.
+  describe('session switch while requests are in flight', () => {
+    const TOKEN_A = 'token-a';
+    const TOKEN_B = 'token-b';
+    const setUser = (userInfo) => ({ type: 'test/setUser', payload: userInfo });
+
+    // User reducer that can switch users directly, so no login round trip is needed
+    const createSwitchableStore = () =>
+      configureStore({
+        reducer: {
+          user: (state = { userInfo: { token: TOKEN_A, userId: 'user-a' } }, action) => {
+            if (action.type === 'test/setUser') return { userInfo: action.payload };
+            if (action.type === logout.type) return { userInfo: null };
+            return state;
+          },
+          bookmark: bookmarkReducer,
+        },
+      });
+
+    const switchToUserB = (s) => {
+      s.dispatch(logout());
+      s.dispatch(setUser({ token: TOKEN_B, userId: 'user-b' }));
+    };
+
+    // A's response arrives first, while B's fetch is still pending
+    const respondPerUser = (path, dataA, dataB) =>
+      server.use(
+        http.get(`${BASE_URL}${path}`, async ({ request }) => {
+          const isA = request.headers.get('Authorization') === `Bearer ${TOKEN_A}`;
+          await delay(isA ? 20 : 60);
+          return HttpResponse.json({ data: isA ? dataA : dataB });
+        })
+      );
+
+    it("ignores the previous user's late ids response", async () => {
+      respondPerUser('/bookmarks/ids', ['question-1'], ['question-2']);
+      const s = createSwitchableStore();
+
+      const requestA = s.dispatch(fetchBookmarkIds());
+      switchToUserB(s);
+      const requestB = s.dispatch(fetchBookmarkIds());
+      await Promise.all([requestA, requestB]);
+
+      const state = s.getState();
+      expect(state.bookmark.ids).toEqual({ 'question-2': true });
+      expect(state.bookmark.idsStatus).toBe('fulfilled');
+    });
+
+    it("ignores the previous user's late saved-questions response", async () => {
+      respondPerUser(
+        '/bookmarks',
+        [{ ...mockQuestions[0], bookmarkedAt: '2026-11-20T00:00:00.000Z' }],
+        [{ ...mockQuestions[1], bookmarkedAt: '2026-11-21T00:00:00.000Z' }]
+      );
+      const s = createSwitchableStore();
+
+      const requestA = s.dispatch(fetchBookmarks());
+      switchToUserB(s);
+      const requestB = s.dispatch(fetchBookmarks());
+      await Promise.all([requestA, requestB]);
+
+      const state = s.getState();
+      expect(selectBookmarks(state).map((q) => q._id)).toEqual(['question-2']);
+      expect(selectIsBookmarked(state, 'question-1')).toBe(false);
+      expect(selectBookmarksStatus(state)).toBe('fulfilled');
+    });
+
+    it('ignores a failed remove that lands after logout, and tags it stale', async () => {
+      server.use(
+        http.delete(`${BASE_URL}/bookmarks/:questionId`, async () => {
+          await delay(20);
+          return HttpResponse.json({ message: 'Server exploded' }, { status: 500 });
+        })
+      );
+      const s = createSwitchableStore();
+      // Seed A's bookmark directly with the thunk's action creators
+      s.dispatch(addBookmark.pending('seed', mockQuestions[0]));
+      s.dispatch(addBookmark.fulfilled({}, 'seed', mockQuestions[0]));
+      expect(selectIsBookmarked(s.getState(), 'question-1')).toBe(true);
+
+      const removal = s.dispatch(removeBookmark('question-1'));
+      switchToUserB(s);
+      const result = await removal;
+
+      expect(removeBookmark.rejected.match(result)).toBe(true);
+      expect(result.meta.stale).toBe(true);
+      const state = s.getState().bookmark;
+      expect(state.ids).toEqual({});
+      expect(state.pending).toEqual({});
+      expect(state.error).toBeNull();
+    });
+
+    it('ignores a failed add that lands after logout', async () => {
+      server.use(
+        http.put(`${BASE_URL}/bookmarks/:questionId`, async () => {
+          await delay(20);
+          return HttpResponse.json({ message: 'Server exploded' }, { status: 500 });
+        })
+      );
+      const s = createSwitchableStore();
+
+      const add = s.dispatch(addBookmark(mockQuestions[0]));
+      switchToUserB(s);
+      // B bookmarks the same question before A's failure arrives
+      s.dispatch(addBookmark.pending('b-request', mockQuestions[0]));
+      const result = await add;
+
+      expect(result.meta.stale).toBe(true);
+      const state = s.getState().bookmark;
+      // A's rollback must not undo B's optimistic add
+      expect(state.ids).toEqual({ 'question-1': true });
+      expect(state.pending).toEqual({ 'question-1': 'b-request' });
+    });
+
+    it('does not tag a failure as stale when the session is unchanged', async () => {
+      failWith('put', '/bookmarks/:questionId');
+
+      const result = await store.dispatch(addBookmark(mockQuestions[1]));
+
+      expect(result.meta.stale).toBe(false);
+    });
+  });
+
+  describe('error fields', () => {
+    it('keeps the saved-questions error when a toggle starts', async () => {
+      failWith('get', '/bookmarks');
+      await store.dispatch(fetchBookmarks());
+      expect(selectBookmarksError(store.getState())).toBe('Server exploded');
+
+      await store.dispatch(addBookmark(mockQuestions[1]));
+      await store.dispatch(fetchBookmarkIds());
+
+      expect(selectBookmarksError(store.getState())).toBe('Server exploded');
+    });
+
+    it('does not report a toggle failure as a saved-questions error', async () => {
+      failWith('put', '/bookmarks/:questionId', 404, 'Question not found');
+
+      await store.dispatch(addBookmark(mockQuestions[1]));
+
+      expect(store.getState().bookmark.error).toBe('Question not found');
+      expect(selectBookmarksError(store.getState())).toBeNull();
+    });
+
+    it('clears the saved-questions error when the list is refetched', async () => {
+      failWith('get', '/bookmarks');
+      await store.dispatch(fetchBookmarks());
+      server.resetHandlers();
+
+      await store.dispatch(fetchBookmarks());
+
+      expect(selectBookmarksError(store.getState())).toBeNull();
+      expect(selectBookmarksStatus(store.getState())).toBe('fulfilled');
     });
   });
 

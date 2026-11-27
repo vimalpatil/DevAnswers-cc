@@ -10,11 +10,18 @@ import { logout } from "./userSlice.js";
 const initialState = {
   ids: {}, // { [questionId]: true } — O(1) lookup for controls
   items: [], // questions for the Saved Questions section
-  pending: {}, // { [questionId]: true } while a PUT or DELETE is in flight
+  // { [questionId]: requestId } while a PUT or DELETE is in flight. Storing the
+  // requestId (not just `true`) lets a response check it is still the current
+  // request for that question, so responses that land after logout are ignored.
+  pending: {},
   rollback: {}, // { [questionId]: { item, index } } — restores an item if its remove fails
   idsStatus: "idle", // 'idle' | 'pending' | 'fulfilled' | 'rejected'
   itemsStatus: "idle",
-  error: null,
+  // requestId of the latest fetch of each kind; only its response is applied
+  idsRequestId: null,
+  itemsRequestId: null,
+  error: null, // last error from the ids fetch or a toggle
+  itemsError: null, // error for the Saved Questions list only
 };
 
 const errorMessage = (error, fallback) =>
@@ -25,15 +32,25 @@ const errorMessage = (error, fallback) =>
 
 const getToken = (getState) => getState().user?.userInfo?.token;
 
+/**
+ * Runs a bookmark request with the current token. If it fails, the rejection
+ * is tagged `meta.stale` when the session changed while it was in flight
+ * (logout or a different login), so the UI can skip the error alert.
+ */
+const runWithToken = async (request, fallback, { getState, rejectWithValue }) => {
+  const token = getToken(getState);
+  try {
+    return await request(token);
+  } catch (error) {
+    const stale = getToken(getState) !== token;
+    return rejectWithValue(errorMessage(error, fallback), { stale });
+  }
+};
+
 export const fetchBookmarkIds = createAsyncThunk(
   "bookmark/fetchBookmarkIds",
-  async (_, { getState, rejectWithValue }) => {
-    try {
-      return await getBookmarkIds(getToken(getState));
-    } catch (error) {
-      return rejectWithValue(errorMessage(error, "Failed to fetch bookmarks"));
-    }
-  },
+  (_, thunkApi) =>
+    runWithToken(getBookmarkIds, "Failed to fetch bookmarks", thunkApi),
   {
     // Collapses duplicate startup dispatches (e.g. StrictMode effects) into one request
     condition: (_, { getState }) =>
@@ -43,13 +60,8 @@ export const fetchBookmarkIds = createAsyncThunk(
 
 export const fetchBookmarks = createAsyncThunk(
   "bookmark/fetchBookmarks",
-  async (_, { getState, rejectWithValue }) => {
-    try {
-      return await getBookmarks(getToken(getState));
-    } catch (error) {
-      return rejectWithValue(errorMessage(error, "Failed to fetch bookmarks"));
-    }
-  },
+  (_, thunkApi) =>
+    runWithToken(getBookmarks, "Failed to fetch bookmarks", thunkApi),
 );
 
 // Skip a toggle while one for the same question is already in flight (AC-5)
@@ -58,27 +70,30 @@ const notPending = (questionId, getState) =>
 
 export const addBookmark = createAsyncThunk(
   "bookmark/addBookmark",
-  async (question, { getState, rejectWithValue }) => {
-    try {
-      return await addBookmarkApi(question._id, getToken(getState));
-    } catch (error) {
-      return rejectWithValue(errorMessage(error, "Failed to update bookmark"));
-    }
-  },
+  (question, thunkApi) =>
+    runWithToken(
+      (token) => addBookmarkApi(question._id, token),
+      "Failed to update bookmark",
+      thunkApi,
+    ),
   { condition: (question, { getState }) => notPending(question._id, getState) },
 );
 
 export const removeBookmark = createAsyncThunk(
   "bookmark/removeBookmark",
-  async (questionId, { getState, rejectWithValue }) => {
-    try {
-      return await removeBookmarkApi(questionId, getToken(getState));
-    } catch (error) {
-      return rejectWithValue(errorMessage(error, "Failed to update bookmark"));
-    }
-  },
+  (questionId, thunkApi) =>
+    runWithToken(
+      (token) => removeBookmarkApi(questionId, token),
+      "Failed to update bookmark",
+      thunkApi,
+    ),
   { condition: (questionId, { getState }) => notPending(questionId, getState) },
 );
+
+// True when this action answers the toggle currently in flight for `id`.
+// False after a logout reset (pending is empty) or if a newer toggle replaced it.
+const isCurrentToggle = (state, id, action) =>
+  state.pending[id] === action.meta.requestId;
 
 const bookmarkSlice = createSlice({
   name: "bookmark",
@@ -90,13 +105,14 @@ const bookmarkSlice = createSlice({
       .addCase(logout, () => initialState)
 
       // fetchBookmarkIds
-      .addCase(fetchBookmarkIds.pending, (state) => {
+      .addCase(fetchBookmarkIds.pending, (state, action) => {
         state.idsStatus = "pending";
+        state.idsRequestId = action.meta.requestId;
         state.error = null;
       })
       .addCase(fetchBookmarkIds.fulfilled, (state, action) => {
-        // Ignore a response that lands after a logout reset
-        if (state.idsStatus !== "pending") return;
+        // Ignore a response from an earlier session or a superseded fetch
+        if (state.idsRequestId !== action.meta.requestId) return;
         const ids = {};
         action.payload.forEach((id) => {
           ids[id] = true;
@@ -108,44 +124,52 @@ const bookmarkSlice = createSlice({
         });
         state.ids = ids;
         state.idsStatus = "fulfilled";
+        state.idsRequestId = null;
       })
       .addCase(fetchBookmarkIds.rejected, (state, action) => {
-        if (state.idsStatus !== "pending") return;
+        if (state.idsRequestId !== action.meta.requestId) return;
         state.idsStatus = "rejected";
+        state.idsRequestId = null;
         state.error = action.payload || action.error.message;
       })
 
       // fetchBookmarks
-      .addCase(fetchBookmarks.pending, (state) => {
+      .addCase(fetchBookmarks.pending, (state, action) => {
         state.itemsStatus = "pending";
-        state.error = null;
+        state.itemsRequestId = action.meta.requestId;
+        state.itemsError = null;
       })
       .addCase(fetchBookmarks.fulfilled, (state, action) => {
-        if (state.itemsStatus !== "pending") return;
+        if (state.itemsRequestId !== action.meta.requestId) return;
         state.items = action.payload;
         action.payload.forEach((q) => {
           if (!state.pending[q._id]) state.ids[q._id] = true;
         });
         state.itemsStatus = "fulfilled";
+        state.itemsRequestId = null;
       })
       .addCase(fetchBookmarks.rejected, (state, action) => {
-        if (state.itemsStatus !== "pending") return;
+        if (state.itemsRequestId !== action.meta.requestId) return;
         state.itemsStatus = "rejected";
-        state.error = action.payload || action.error.message;
+        state.itemsRequestId = null;
+        state.itemsError = action.payload || action.error.message;
       })
 
       // addBookmark — optimistic (AC-4)
       .addCase(addBookmark.pending, (state, action) => {
         const id = action.meta.arg._id;
         state.ids[id] = true;
-        state.pending[id] = true;
+        state.pending[id] = action.meta.requestId;
         state.error = null;
       })
       .addCase(addBookmark.fulfilled, (state, action) => {
-        delete state.pending[action.meta.arg._id];
+        const id = action.meta.arg._id;
+        if (!isCurrentToggle(state, id, action)) return;
+        delete state.pending[id];
       })
       .addCase(addBookmark.rejected, (state, action) => {
         const id = action.meta.arg._id;
+        if (!isCurrentToggle(state, id, action)) return;
         delete state.ids[id];
         delete state.pending[id];
         state.error = action.payload || action.error.message;
@@ -160,16 +184,18 @@ const bookmarkSlice = createSlice({
           state.items.splice(index, 1);
         }
         delete state.ids[id];
-        state.pending[id] = true;
+        state.pending[id] = action.meta.requestId;
         state.error = null;
       })
       .addCase(removeBookmark.fulfilled, (state, action) => {
         const id = action.meta.arg;
+        if (!isCurrentToggle(state, id, action)) return;
         delete state.pending[id];
         delete state.rollback[id];
       })
       .addCase(removeBookmark.rejected, (state, action) => {
         const id = action.meta.arg;
+        if (!isCurrentToggle(state, id, action)) return;
         const saved = state.rollback[id];
         if (saved) {
           state.items.splice(saved.index, 0, saved.item);
@@ -192,6 +218,8 @@ export const selectIsBookmarkPending = (state, id) =>
 export const selectBookmarks = (state) => state.bookmark?.items ?? EMPTY;
 export const selectBookmarksStatus = (state) =>
   state.bookmark?.itemsStatus ?? "idle";
-export const selectBookmarksError = (state) => state.bookmark?.error ?? null;
+// Error for the Saved Questions list; toggles and the ids fetch don't touch it
+export const selectBookmarksError = (state) =>
+  state.bookmark?.itemsError ?? null;
 
 export default bookmarkSlice.reducer;

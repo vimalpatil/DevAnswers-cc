@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Provider } from 'react-redux';
@@ -7,7 +7,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { configureStore } from '@reduxjs/toolkit';
 import { http, HttpResponse, delay } from 'msw';
 import Profile from '../../../src/pages/Profile/Profile';
-import bookmarkReducer from '../../../src/reducers/bookmarkSlice';
+import bookmarkReducer, { addBookmark } from '../../../src/reducers/bookmarkSlice';
 import { server } from '../../mocks/server';
 import { seedBookmarks } from '../../mocks/handlers';
 import { mockBookmarkedQuestions } from '../../mocks/mockData';
@@ -179,6 +179,24 @@ describe('Profile Page - Saved Questions', () => {
 
     expect(await screen.findByText('No saved questions yet')).toBeInTheDocument();
     expect(calls).toBe(2);
+  });
+
+  it('keeps the load error message when a bookmark toggle fails elsewhere', async () => {
+    server.use(
+      http.get(`${BASE_URL}/bookmarks`, () =>
+        HttpResponse.json({ message: 'Server exploded' }, { status: 500 })
+      ),
+      http.put(`${BASE_URL}/bookmarks/:questionId`, () =>
+        HttpResponse.json({ message: 'Question not found' }, { status: 404 })
+      )
+    );
+    const store = renderWithBookmarks();
+    expect(await screen.findByText('Server exploded')).toBeInTheDocument();
+
+    await act(() => store.dispatch(addBookmark({ _id: 'question-2' })));
+
+    expect(screen.getByText('Server exploded')).toBeInTheDocument();
+    expect(screen.queryByText('Question not found')).not.toBeInTheDocument();
   });
 
   it('hides the section while editing', async () => {
