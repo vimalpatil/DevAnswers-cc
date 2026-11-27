@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Environment files (keep the example template)
+.env
+.env.*
+!.env.example
+
+# Build output and test coverage
+dist/
+build/
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Local Claude Code settings (machine-specific)
+.claude/settings.local.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
