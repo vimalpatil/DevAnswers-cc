@@ -6,6 +6,7 @@ import { Provider } from 'react-redux';
 import { BrowserRouter } from 'react-router-dom';
 import { configureStore } from '@reduxjs/toolkit';
 import QuestionList from '../../../src/components/Question/QuestionList';
+import { SORT_OPTIONS } from '../../../src/components/Question/QuestionFilterBar';
 import questionReducer from '../../../src/reducers/questionSlice';
 
 const createMockStore = () => {
@@ -101,5 +102,71 @@ describe('QuestionList Component', () => {
   it('renders sort dropdown', () => {
     renderQuestionList();
     expect(screen.getByText('Newest')).toBeInTheDocument();
+  });
+});
+
+// Optional props used by the Saved Questions section. The tests above cover
+// the defaults (home page regression).
+describe('QuestionList custom props', () => {
+  const savedQuestions = [
+    { ...mockQuestions[0], bookmarkedAt: '2026-11-01T00:00:00.000Z' }, // older question, saved later
+    { ...mockQuestions[1], bookmarkedAt: '2026-10-01T00:00:00.000Z' },
+  ];
+  const savedSortOptions = [{ value: 'saved', label: 'Recently Saved' }, ...SORT_OPTIONS];
+
+  const renderWithProps = (props) => {
+    const store = createMockStore();
+    return render(
+      <Provider store={store}>
+        <BrowserRouter>
+          <QuestionList {...props} />
+        </BrowserRouter>
+      </Provider>
+    );
+  };
+
+  it('shows the custom empty title and hint when there are no questions', () => {
+    renderWithProps({
+      questions: [],
+      emptyTitle: 'No saved questions yet',
+      emptyHint: 'Click the bookmark icon on any question to save it here.',
+    });
+
+    expect(screen.getByText('No saved questions yet')).toBeInTheDocument();
+    expect(screen.getByText('Click the bookmark icon on any question to save it here.')).toBeInTheDocument();
+    expect(screen.queryByText(/be the first to ask/i)).not.toBeInTheDocument();
+  });
+
+  it('keeps the default text when a search filters everything out', async () => {
+    renderWithProps({
+      questions: savedQuestions,
+      emptyTitle: 'No saved questions yet',
+      emptyHint: 'Click the bookmark icon on any question to save it here.',
+    });
+
+    await userEvent.type(screen.getByPlaceholderText(/search questions/i), 'xyz-no-match');
+
+    expect(screen.getByText('No questions found')).toBeInTheDocument();
+    expect(screen.queryByText('No saved questions yet')).not.toBeInTheDocument();
+  });
+
+  it('uses custom sort options and default sort', () => {
+    renderWithProps({ questions: savedQuestions, sortOptions: savedSortOptions, defaultSort: 'saved' });
+
+    expect(screen.getByRole('button', { name: /Recently Saved/ })).toBeInTheDocument();
+  });
+
+  it("orders by bookmarkedAt descending with the 'saved' sort", () => {
+    renderWithProps({ questions: savedQuestions, sortOptions: savedSortOptions, defaultSort: 'saved' });
+
+    const titles = screen.getAllByRole('link').map((a) => a.textContent);
+    expect(titles).toEqual(['First Question', 'Second Question']);
+  });
+
+  it('defaults to newest first without custom props', () => {
+    renderWithProps({ questions: savedQuestions });
+
+    const titles = screen.getAllByRole('link').map((a) => a.textContent);
+    expect(titles).toEqual(['Second Question', 'First Question']);
   });
 });

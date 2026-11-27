@@ -1,4 +1,6 @@
+import { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Outlet } from 'react-router-dom';
+import { useDispatch, useSelector } from 'react-redux';
 
 import Home from './pages/Question/Home.jsx';
 import QuestionDetail from './pages/Question/QuestionDetail.jsx';
@@ -9,8 +11,19 @@ import Profile from './pages/Profile/Profile.jsx';
 import Tags from './pages/Tags/Tags.jsx';
 import BaseLayout from './layouts/BaseLayout.jsx';
 import SideBarLayout from './layouts/SideBarLayout.jsx';
+import { fetchBookmarkIds } from './reducers/bookmarkSlice.js';
 
 function App() {
+  const dispatch = useDispatch();
+  const token = useSelector((state) => state.user.userInfo?.token);
+
+  // Load bookmark state once per session: on a restored session and after each login.
+  // Logout clears the bookmark slice via its logout listener.
+  useEffect(() => {
+    if (token) {
+      dispatch(fetchBookmarkIds());
+    }
+  }, [token, dispatch]);
 
   return (
     <Router>

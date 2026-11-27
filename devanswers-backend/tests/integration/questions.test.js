@@ -4,6 +4,7 @@ import '../setup.js';
 import app from '../../src/app.js';
 import Question from '../../src/models/Question.js';
 import Tag from '../../src/models/Tag.js';
+import Bookmark from '../../src/models/Bookmark.js';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -363,6 +364,28 @@ describe('Questions API', () => {
 
     const deletedQuestion = await Question.findById(question._id);
     expect(deletedQuestion).toBeNull();
+  });
+
+  it('DELETE /api/questions/:id -> should delete its bookmarks too (AC-13)', async () => {
+    const question = await createQuestion({ author: mockUser._id });
+
+    const bookmarkRes = await request(app)
+      .put(`/api/bookmarks/${question._id}`)
+      .set('Authorization', `Bearer ${jwtToken}`);
+    expect(bookmarkRes.status).toBe(200);
+
+    const response = await request(app)
+      .delete(`/api/questions/${question._id}`)
+      .set('Authorization', `Bearer ${jwtToken}`);
+    expect(response.status).toBe(200);
+
+    expect(await Bookmark.countDocuments({ question: question._id })).toBe(0);
+
+    const listRes = await request(app)
+      .get('/api/bookmarks')
+      .set('Authorization', `Bearer ${jwtToken}`);
+    expect(listRes.status).toBe(200);
+    expect(listRes.body.data).toEqual([]);
   });
 
   it('DELETE /api/questions/:id -> should delete a question when user is an admin', async () => {

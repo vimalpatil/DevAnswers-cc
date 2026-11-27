@@ -8,6 +8,18 @@ describe('Redux Store Configuration', () => {
     expect(state).toHaveProperty('user');
     expect(state).toHaveProperty('question');
     expect(state).toHaveProperty('theme');
+    expect(state).toHaveProperty('bookmark');
+  });
+
+  it('should initialize bookmark state correctly', () => {
+    const { bookmark } = store.getState();
+
+    expect(bookmark.ids).toEqual({});
+    expect(bookmark.items).toEqual([]);
+    expect(bookmark.pending).toEqual({});
+    expect(bookmark.idsStatus).toBe('idle');
+    expect(bookmark.itemsStatus).toBe('idle');
+    expect(bookmark.error).toBeNull();
   });
 
   it('should initialize user state correctly', () => {

@@ -3,6 +3,8 @@ import { createAppError } from "../utils/createAppError.js";
 import Answer from "../models/Answer.js";
 import Tag from "../models/Tag.js";
 import { handleVote } from "./voteService.js";
+import { withAnswerCounts } from "./answerCountHelper.js";
+import { deleteBookmarksForQuestion } from "./bookmarkService.js";
 import { getAI, extractJSON } from "../utils/geminiClient.js";
 
 export const getAllQuestionsService = async () => {
@@ -17,14 +19,7 @@ export const getAllQuestionsService = async () => {
   }
 
   // Attach answerCount to each question so the frontend can display and sort by it
-  const questionsWithCount = await Promise.all(
-    questions.map(async (q) => {
-      const answerCount = await Answer.countDocuments({ questionId: q._id });
-      return { ...(q.toObject?.() ?? q), answerCount };
-    }),
-  );
-
-  return questionsWithCount;
+  return withAnswerCounts(questions);
 };
 
 export const getQuestionByIdService = async (id) => {
@@ -154,6 +149,7 @@ export const deleteQuestionService = async (id, loggedInUser) => {
 
   await Question.findByIdAndDelete(id);
   await Answer.deleteMany({ questionId: id }); // optional: delete related answers
+  await deleteBookmarksForQuestion(id);
 
   return question;
 };

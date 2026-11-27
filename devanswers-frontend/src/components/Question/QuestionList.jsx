@@ -6,10 +6,19 @@ import './QuestionList.css';
 
 const QUESTIONS_PER_PAGE = 5;
 
-const QuestionList = ({ questions = [] }) => {
-    const [currentPage, setCurrentPage] = useState(1);
+const DEFAULT_EMPTY_TITLE = 'No questions found';
+const DEFAULT_EMPTY_HINT = 'Try adjusting your search or be the first to ask!';
+
+const QuestionList = ({
+    questions = [],
+    sortOptions = SORT_OPTIONS,
+    defaultSort = 'newest',
+    emptyTitle = DEFAULT_EMPTY_TITLE,
+    emptyHint = DEFAULT_EMPTY_HINT,
+}) => {
+    const [page, setCurrentPage] = useState(1);
     const [searchQuery, setSearchQuery] = useState('');
-    const [sortBy, setSortBy] = useState('newest');
+    const [sortBy, setSortBy] = useState(defaultSort);
 
     const filtered = questions.filter((q) =>
         q.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -18,6 +27,8 @@ const QuestionList = ({ questions = [] }) => {
 
     const sorted = [...filtered].sort((a, b) => {
         switch (sortBy) {
+            case 'saved':
+                return new Date(b.bookmarkedAt) - new Date(a.bookmarkedAt);
             case 'votes':
                 return (b.voteCount || 0) - (a.voteCount || 0);
             case 'answers': {
@@ -31,6 +42,8 @@ const QuestionList = ({ questions = [] }) => {
     });
 
     const totalPages = Math.ceil(sorted.length / QUESTIONS_PER_PAGE);
+    // Clamp so removing items (e.g. unbookmarking) never strands the user on an empty page
+    const currentPage = Math.min(page, Math.max(totalPages, 1));
     const start = (currentPage - 1) * QUESTIONS_PER_PAGE;
     const currentQuestions = sorted.slice(start, start + QUESTIONS_PER_PAGE);
 
@@ -57,6 +70,7 @@ const QuestionList = ({ questions = [] }) => {
                 onSearch={handleSearch}
                 sortBy={sortBy}
                 onSort={handleSort}
+                options={sortOptions}
             />
 
             {/* Question Count */}
@@ -72,8 +86,13 @@ const QuestionList = ({ questions = [] }) => {
                     ))
                 ) : (
                     <div className="text-center py-5">
-                        <h4 className="text-muted">No questions found</h4>
-                        <p className="text-muted">Try adjusting your search or be the first to ask!</p>
+                        {/* Custom empty text only when there is nothing at all; a search miss keeps the default text */}
+                        <h4 className="text-muted">
+                            {questions.length === 0 ? emptyTitle : DEFAULT_EMPTY_TITLE}
+                        </h4>
+                        <p className="text-muted">
+                            {questions.length === 0 ? emptyHint : DEFAULT_EMPTY_HINT}
+                        </p>
                     </div>
                 )}
             </div>

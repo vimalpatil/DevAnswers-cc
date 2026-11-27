@@ -9,7 +9,88 @@ import {
 
 const BASE_URL = "http://localhost:3000/api";
 
+// ── Bookmark store ──────────────────────────────────────────────────────────
+// Per-test in-memory state: { questionId -> bookmarkedAt }. Reset after every
+// test by resetBookmarkStore() in tests/setup.js. Seed with seedBookmarks().
+let bookmarkStore = new Map();
+
+export const resetBookmarkStore = () => {
+  bookmarkStore = new Map();
+};
+
+export const seedBookmarks = (entries) => {
+  entries.forEach(({ _id, bookmarkedAt }) => bookmarkStore.set(_id, bookmarkedAt));
+};
+
+const unauthorized = () =>
+  HttpResponse.json(
+    { success: false, message: "No token provided, authorization denied." },
+    { status: 401 },
+  );
+
+const isAuthorized = (request) =>
+  !!request.headers.get("Authorization")?.startsWith("Bearer ");
+
 export const handlers = [
+  // ── Bookmark endpoints ────────────────────────────────────────────────────
+  http.get(`${BASE_URL}/bookmarks/ids`, ({ request }) => {
+    if (!isAuthorized(request)) return unauthorized();
+    return HttpResponse.json({
+      success: true,
+      message: "Bookmark IDs fetched successfully",
+      data: [...bookmarkStore.keys()],
+    });
+  }),
+
+  http.get(`${BASE_URL}/bookmarks`, ({ request }) => {
+    if (!isAuthorized(request)) return unauthorized();
+    const data = [...bookmarkStore.entries()]
+      .map(([id, bookmarkedAt]) => {
+        const question = mockQuestions.find((q) => q._id === id);
+        return question && { ...question, bookmarkedAt };
+      })
+      .filter(Boolean)
+      .sort((a, b) => new Date(b.bookmarkedAt) - new Date(a.bookmarkedAt));
+    return HttpResponse.json({
+      success: true,
+      message: "Bookmarks fetched successfully",
+      data,
+    });
+  }),
+
+  http.put(`${BASE_URL}/bookmarks/:questionId`, ({ request, params }) => {
+    if (!isAuthorized(request)) return unauthorized();
+    const { questionId } = params;
+    if (!mockQuestions.some((q) => q._id === questionId)) {
+      return HttpResponse.json(
+        { success: false, message: "Question not found" },
+        { status: 404 },
+      );
+    }
+    if (!bookmarkStore.has(questionId)) {
+      bookmarkStore.set(questionId, new Date().toISOString());
+    }
+    return HttpResponse.json({
+      success: true,
+      message: "Question bookmarked",
+      data: {
+        questionId,
+        bookmarked: true,
+        bookmarkedAt: bookmarkStore.get(questionId),
+      },
+    });
+  }),
+
+  http.delete(`${BASE_URL}/bookmarks/:questionId`, ({ request, params }) => {
+    if (!isAuthorized(request)) return unauthorized();
+    bookmarkStore.delete(params.questionId);
+    return HttpResponse.json({
+      success: true,
+      message: "Bookmark removed",
+      data: { questionId: params.questionId, bookmarked: false },
+    });
+  }),
+
   // ── Auth endpoints ────────────────────────────────────────────────────────
   http.post(`${BASE_URL}/auth/login`, async ({ request }) => {
     const body = await request.json();
