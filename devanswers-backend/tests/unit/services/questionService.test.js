@@ -57,7 +57,7 @@ describe("questionService", () => {
     });
 
     // Edge case - sorted by createdAt
-    it("should sort questions by createdAt descending", async () => {
+    it("should sort questions by createdAt descending, with _id as tiebreaker", async () => {
       // Arrange
       const sortSpy = vi.fn().mockResolvedValue([{ _id: "q1" }]);
 
@@ -74,7 +74,7 @@ describe("questionService", () => {
       await getAllQuestionsService();
 
       // Assert
-      expect(sortSpy).toHaveBeenCalledWith({ createdAt: -1 });
+      expect(sortSpy).toHaveBeenCalledWith({ createdAt: -1, _id: -1 });
     });
 
     // Error case - no questions found
