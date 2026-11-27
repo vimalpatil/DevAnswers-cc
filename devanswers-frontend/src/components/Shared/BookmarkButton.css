@@ -1,0 +1,14 @@
+.bookmark-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  line-height: 1;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.bookmark-btn:hover,
+.bookmark-btn:focus-visible,
+.bookmark-btn-active {
+  color: var(--primary-color);
+}

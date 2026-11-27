@@ -3,6 +3,7 @@ import User from '../models/User.js';
 import Question from '../models/Question.js';
 import Answer from '../models/Answer.js';
 import Tag from '../models/Tag.js';
+import Bookmark from '../models/Bookmark.js';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 
@@ -29,6 +30,7 @@ async function clearExistingData() {
       Question.deleteMany({}),
       Answer.deleteMany({}),
       Tag.deleteMany({}),
+      Bookmark.deleteMany({}),
     ]);
     console.log('Deleted existing data');
   } catch (error) {

@@ -84,6 +84,18 @@ export const mockQuestions = [
   },
 ];
 
+// Bookmarked questions as returned by GET /api/bookmarks (newest saved first)
+export const mockBookmarkedQuestions = [
+  {
+    ...mockQuestions[2],
+    bookmarkedAt: '2026-11-20T09:30:00.000Z',
+  },
+  {
+    ...mockQuestions[0],
+    bookmarkedAt: '2026-11-18T15:00:00.000Z',
+  },
+];
+
 export const mockAuthResponse = {
   login: {
     token: mockUsers.user1.token,

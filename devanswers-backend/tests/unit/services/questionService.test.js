@@ -11,6 +11,7 @@ import {
 import Question from "../../../src/models/Question.js";
 import Answer from "../../../src/models/Answer.js";
 import Tag from "../../../src/models/Tag.js";
+import Bookmark from "../../../src/models/Bookmark.js";
 import { handleVote } from "../../../src/services/voteService.js";
 
 // Mock the models and services
@@ -18,6 +19,7 @@ import { handleVote } from "../../../src/services/voteService.js";
 vi.mock("../../../src/models/Question.js");
 vi.mock("../../../src/models/Answer.js");
 vi.mock("../../../src/models/Tag.js");
+vi.mock("../../../src/models/Bookmark.js");
 vi.mock("../../../src/services/voteService.js");
 
 describe("questionService", () => {
@@ -57,7 +59,7 @@ describe("questionService", () => {
     });
 
     // Edge case - sorted by createdAt
-    it("should sort questions by createdAt descending", async () => {
+    it("should sort questions by createdAt descending, with _id as tiebreaker", async () => {
       // Arrange
       const sortSpy = vi.fn().mockResolvedValue([{ _id: "q1" }]);
 
@@ -74,7 +76,7 @@ describe("questionService", () => {
       await getAllQuestionsService();
 
       // Assert
-      expect(sortSpy).toHaveBeenCalledWith({ createdAt: -1 });
+      expect(sortSpy).toHaveBeenCalledWith({ createdAt: -1, _id: -1 });
     });
 
     // Error case - no questions found
@@ -449,6 +451,7 @@ describe("questionService", () => {
       Question.findById = vi.fn().mockResolvedValue(mockQuestion);
       Question.findByIdAndDelete = vi.fn().mockResolvedValue(mockQuestion);
       Answer.deleteMany = vi.fn().mockResolvedValue({ deletedCount: 2 });
+      Bookmark.deleteMany = vi.fn().mockResolvedValue({ deletedCount: 1 });
 
       const loggedInUser = { id: "user123", isAdmin: false };
 
@@ -461,6 +464,26 @@ describe("questionService", () => {
         questionId: "question123",
       });
       expect(result).toEqual(mockQuestion);
+    });
+
+    // Cascade - bookmarks for the deleted question are removed (AC-13)
+    it("should delete all bookmarks for the deleted question", async () => {
+      // Arrange
+      const mockQuestion = {
+        _id: "question123",
+        author: { toString: () => "user123" },
+      };
+
+      Question.findById = vi.fn().mockResolvedValue(mockQuestion);
+      Question.findByIdAndDelete = vi.fn().mockResolvedValue(mockQuestion);
+      Answer.deleteMany = vi.fn().mockResolvedValue({});
+      Bookmark.deleteMany = vi.fn().mockResolvedValue({ deletedCount: 2 });
+
+      // Act
+      await deleteQuestionService("question123", { id: "user123", isAdmin: false });
+
+      // Assert
+      expect(Bookmark.deleteMany).toHaveBeenCalledWith({ question: "question123" });
     });
 
     // Success case - admin deletes

@@ -5,6 +5,7 @@ import { useDispatch } from 'react-redux';
 import { voteQuestion } from '../../reducers/questionSlice';
 import { formatDate } from '../../utils/timeFormat';
 import VoteButtons from '../Shared/VoteButtons';
+import BookmarkButton from '../Shared/BookmarkButton';
 import './QuestionCard.css';
 
 const QuestionCard = ({ question }) => {
@@ -46,6 +47,7 @@ const QuestionCard = ({ question }) => {
               <FaComments className="qcard-icon-comments" />
               <span className="qcard-answer-count">{answerCount}</span>
             </div>
+            <BookmarkButton question={question} className="mt-1" />
           </div>
 
           {/* Content Column */}

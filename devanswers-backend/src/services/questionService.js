@@ -3,27 +3,23 @@ import { createAppError } from "../utils/createAppError.js";
 import Answer from "../models/Answer.js";
 import Tag from "../models/Tag.js";
 import { handleVote } from "./voteService.js";
+import { withAnswerCounts } from "./answerCountHelper.js";
+import { deleteBookmarksForQuestion } from "./bookmarkService.js";
 import { getAI, extractJSON } from "../utils/geminiClient.js";
 
 export const getAllQuestionsService = async () => {
   const questions = await Question.find({})
     .populate({ path: "author", select: "name" })
     .populate("tags")
-    .sort({ createdAt: -1 });
+    // _id breaks ties between questions created in the same millisecond
+    .sort({ createdAt: -1, _id: -1 });
 
   if (!questions || questions.length === 0) {
     throw createAppError("No questions found", 404);
   }
 
   // Attach answerCount to each question so the frontend can display and sort by it
-  const questionsWithCount = await Promise.all(
-    questions.map(async (q) => {
-      const answerCount = await Answer.countDocuments({ questionId: q._id });
-      return { ...(q.toObject?.() ?? q), answerCount };
-    }),
-  );
-
-  return questionsWithCount;
+  return withAnswerCounts(questions);
 };
 
 export const getQuestionByIdService = async (id) => {
@@ -153,6 +149,7 @@ export const deleteQuestionService = async (id, loggedInUser) => {
 
   await Question.findByIdAndDelete(id);
   await Answer.deleteMany({ questionId: id }); // optional: delete related answers
+  await deleteBookmarksForQuestion(id);
 
   return question;
 };

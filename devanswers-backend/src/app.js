@@ -8,6 +8,7 @@ import Question from "./models/Question.js";
 import Answer from "./models/Answer.js";
 import User from "./models/User.js";
 import Tag from "./models/Tag.js";
+import Bookmark from "./models/Bookmark.js";
 
 import router from './routes/index.js';
 import errorhandler from './middleware/errorHandler.js';

@@ -8,8 +8,8 @@ const SORT_OPTIONS = [
     { value: 'answers', label: 'Most Answers' },
 ];
 
-const QuestionFilterBar = ({ searchQuery, onSearch, sortBy, onSort }) => {
-    const currentSortLabel = SORT_OPTIONS.find((o) => o.value === sortBy)?.label;
+const QuestionFilterBar = ({ searchQuery, onSearch, sortBy, onSort, options = SORT_OPTIONS }) => {
+    const currentSortLabel = options.find((o) => o.value === sortBy)?.label;
 
     return (
         <div className="d-flex flex-column flex-sm-row gap-2 mb-2">
@@ -32,7 +32,7 @@ const QuestionFilterBar = ({ searchQuery, onSearch, sortBy, onSort }) => {
                 </Button>
                 <Dropdown.Toggle split variant="outline-secondary" className="qlist-sort-toggle" />
                 <Dropdown.Menu>
-                    {SORT_OPTIONS.map(({ value, label }) => (
+                    {options.map(({ value, label }) => (
                         <Dropdown.Item
                             key={value}
                             active={sortBy === value}

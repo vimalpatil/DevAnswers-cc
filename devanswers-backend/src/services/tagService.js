@@ -1,6 +1,6 @@
 import Tag from '../models/Tag.js';
 import Question from '../models/Question.js';
-import Answer from '../models/Answer.js';
+import { withAnswerCounts } from './answerCountHelper.js';
 import { createAppError } from '../utils/createAppError.js';
 
 export const getAllTagsService = async () => {
@@ -28,12 +28,5 @@ export const getQuestionsByTagService = async (tagId) => {
         // _id breaks ties between questions created in the same millisecond
         .sort({ createdAt: -1, _id: -1 });
 
-    const questionsWithCount = await Promise.all(
-        questions.map(async (q) => {
-            const answerCount = await Answer.countDocuments({ questionId: q._id });
-            return { ...(q.toObject?.() ?? q), answerCount };
-        })
-    );
-
-    return questionsWithCount;
+    return withAnswerCounts(questions);
 };

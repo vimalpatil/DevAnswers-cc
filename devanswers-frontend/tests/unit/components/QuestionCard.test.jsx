@@ -7,6 +7,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { configureStore } from '@reduxjs/toolkit';
 import QuestionCard from '../../../src/components/Question/QuestionCard';
 import questionReducer from '../../../src/reducers/questionSlice';
+import bookmarkReducer from '../../../src/reducers/bookmarkSlice';
 
 const createMockStore = () => {
   return configureStore({
@@ -106,5 +107,44 @@ describe('QuestionCard Component', () => {
   it('shows "Anonymous" when author name is missing', () => {
     renderQuestionCard({ ...mockQuestion, author: null });
     expect(screen.getByText('Anonymous')).toBeInTheDocument();
+  });
+});
+
+// Bookmark control (AC-3). The tests above use a store without a `bookmark`
+// slice on purpose: the card must still render there (AC-14).
+describe('QuestionCard bookmark control', () => {
+  const renderWithBookmarks = (ids = {}) => {
+    const store = configureStore({
+      reducer: {
+        question: questionReducer,
+        user: () => ({ userInfo: { userId: 'user-1', token: 'tok' } }),
+        bookmark: bookmarkReducer,
+      },
+      preloadedState: {
+        bookmark: { ...bookmarkReducer(undefined, { type: '@@INIT' }), ids },
+      },
+    });
+    return render(
+      <Provider store={store}>
+        <BrowserRouter>
+          <QuestionCard question={mockQuestion} />
+        </BrowserRouter>
+      </Provider>
+    );
+  };
+
+  it('renders the bookmark control', () => {
+    renderWithBookmarks();
+    expect(screen.getByRole('button', { name: 'Bookmark question' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('reflects bookmarked state from the store', () => {
+    renderWithBookmarks({ q1: true });
+    expect(screen.getByRole('button', { name: 'Remove bookmark' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('renders the bookmark control even without a bookmark slice', () => {
+    renderQuestionCard();
+    expect(screen.getByRole('button', { name: 'Bookmark question' })).toBeInTheDocument();
   });
 });

@@ -1,17 +1,31 @@
 import { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Form, Button, Alert, Spinner } from 'react-bootstrap';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { FaUser, FaEnvelope, FaSave, FaEdit } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import axiosInstance from '../../api/axiosInstance.js';
 import { USER_API } from '../../config/config.js';
+import {
+  fetchBookmarks,
+  selectBookmarks,
+  selectBookmarksStatus,
+  selectBookmarksError,
+} from '../../reducers/bookmarkSlice.js';
+import QuestionList from '../../components/Question/QuestionList.jsx';
+import { SORT_OPTIONS } from '../../components/Question/QuestionFilterBar.jsx';
 import './Profile.css';
+
+const SAVED_SORT_OPTIONS = [{ value: 'saved', label: 'Recently Saved' }, ...SORT_OPTIONS];
 
 const Profile = () => {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const { userInfo } = useSelector((state) => state.user);
   const isAuthenticated = !!userInfo;
-  
+  const bookmarks = useSelector(selectBookmarks);
+  const bookmarksStatus = useSelector(selectBookmarksStatus);
+  const bookmarksError = useSelector(selectBookmarksError);
+
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState('');
@@ -54,6 +68,12 @@ const Profile = () => {
 
     fetchUserStats();
   }, [isAuthenticated, navigate, userId]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      dispatch(fetchBookmarks());
+    }
+  }, [isAuthenticated, dispatch]);
 
   const handleChange = (e) => {
     setFormData({
@@ -307,6 +327,42 @@ const Profile = () => {
                     </small>
                   </Alert>
                 </div>
+              )}
+
+              {/* Saved Questions Section */}
+              {!isEditing && (
+                <section
+                  className="mt-4 pt-4 profile-section-divider"
+                  aria-labelledby="saved-questions-title"
+                >
+                  <h5 id="saved-questions-title" className="mb-3 profile-stats-title">
+                    Saved Questions
+                  </h5>
+                  {bookmarksStatus === 'rejected' ? (
+                    <Alert variant="danger" className="d-flex justify-content-between align-items-center gap-2">
+                      <span>{bookmarksError || 'Failed to load saved questions.'}</span>
+                      <Button
+                        variant="outline-danger"
+                        size="sm"
+                        onClick={() => dispatch(fetchBookmarks())}
+                      >
+                        Retry
+                      </Button>
+                    </Alert>
+                  ) : bookmarksStatus === 'fulfilled' ? (
+                    <QuestionList
+                      questions={bookmarks}
+                      sortOptions={SAVED_SORT_OPTIONS}
+                      defaultSort="saved"
+                      emptyTitle="No saved questions yet"
+                      emptyHint="Click the bookmark icon on any question to save it here."
+                    />
+                  ) : (
+                    <div className="text-center py-4">
+                      <Spinner animation="border" role="status" aria-label="Loading saved questions" />
+                    </div>
+                  )}
+                </section>
               )}
             </Card.Body>
           </Card>

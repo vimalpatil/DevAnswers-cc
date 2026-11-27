@@ -5,6 +5,7 @@ import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import QuestionContent from '../../../src/components/Question/QuestionContent';
 import questionReducer from '../../../src/reducers/questionSlice';
+import bookmarkReducer from '../../../src/reducers/bookmarkSlice';
 
 const createMockStore = () => {
   return configureStore({
@@ -82,5 +83,38 @@ describe('QuestionContent Component', () => {
   it('renders "Posted by" label for the author', () => {
     renderQuestionContent();
     expect(screen.getByText(/Posted by/i)).toBeInTheDocument();
+  });
+});
+
+// Bookmark control in the header card (AC-3)
+describe('QuestionContent bookmark control', () => {
+  const renderWithBookmarks = (ids = {}) => {
+    const store = configureStore({
+      reducer: {
+        question: questionReducer,
+        user: () => ({ userInfo: { userId: 'user-1', token: 'tok' } }),
+        bookmark: bookmarkReducer,
+      },
+      preloadedState: {
+        bookmark: { ...bookmarkReducer(undefined, { type: '@@INIT' }), ids },
+      },
+    });
+    return render(
+      <Provider store={store}>
+        <QuestionContent question={mockQuestion} />
+      </Provider>
+    );
+  };
+
+  it('renders the bookmark control next to the title', () => {
+    renderWithBookmarks();
+    const button = screen.getByRole('button', { name: 'Bookmark question' });
+    const header = screen.getByText('How do I use the useEffect hook?').parentElement;
+    expect(header).toContainElement(button);
+  });
+
+  it('reflects bookmarked state from the store', () => {
+    renderWithBookmarks({ q1: true });
+    expect(screen.getByRole('button', { name: 'Remove bookmark' })).toHaveAttribute('aria-pressed', 'true');
   });
 });
