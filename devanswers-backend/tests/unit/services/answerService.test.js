@@ -166,71 +166,138 @@ describe('answerService', () => {
   });
 
   describe('updateAnswerService', () => {
-    // Success case
-    it('should update and return answer', async () => {
-      // Arrange
-      const loggedInUser = { id: 'user123', isAdmin: false };
-      const mockAnswer = {
-        _id: 'answer123',
-        answerText: 'Old text',
-        author: { toString: () => 'user123' },
-        save: vi.fn().mockResolvedValue(true),
-      };
-      const mockPopulatedAnswer = {
-        _id: 'answer123',
-        answerText: 'Updated text',
-        author: { _id: 'user123', name: 'Test User' },
-      };
+    const ANSWER_ID = '64b000000000000000000001';
+    const AUTHOR_ID = '64a000000000000000000001';
+    const OTHER_ID = '64a000000000000000000002';
+    const author = { id: AUTHOR_ID, isAdmin: false };
 
-      Answer.findById = vi.fn()
-        .mockResolvedValueOnce(mockAnswer)
-        .mockReturnValueOnce({
-          populate: vi.fn().mockResolvedValue(mockPopulatedAnswer),
-        });
+    // findById(...).select(...) resolves to the stored answer
+    const mockFindSelect = (doc) => {
+      const select = vi.fn().mockResolvedValue(doc);
+      Answer.findById = vi.fn().mockReturnValue({ select });
+      return select;
+    };
 
-      // Act
-      const result = await updateAnswerService('answer123', 'Updated text', loggedInUser);
-
-      // Assert
-      expect(Answer.findById).toHaveBeenCalledWith('answer123');
-      expect(mockAnswer.save).toHaveBeenCalled();
-      expect(result).toEqual(mockPopulatedAnswer);
+    const storedAnswer = (overrides = {}) => ({
+      _id: ANSWER_ID,
+      answerText: 'Old text',
+      author: { toString: () => AUTHOR_ID },
+      ...overrides,
     });
 
-    // Error case - answer not found
-    it('should throw 404 if answer not found during update', async () => {
-      // Arrange
-      const loggedInUser = { id: 'user123', isAdmin: false };
-      Answer.findById = vi.fn().mockResolvedValue(null);
+    it('lets the author update with a conditional, whitelisted $set', async () => {
+      const select = mockFindSelect(storedAnswer());
+      const populated = { _id: ANSWER_ID, answerText: 'New text', editedAt: new Date() };
+      const populate = vi.fn().mockResolvedValue(populated);
+      Answer.findOneAndUpdate = vi.fn().mockReturnValue({ populate });
 
-      // Act & Assert
-      await expect(
-        updateAnswerService('nonexistent', 'Updated text', loggedInUser)
-      ).rejects.toThrow('Answer not found');
-      await expect(
-        updateAnswerService('nonexistent', 'Updated text', loggedInUser)
-      ).rejects.toMatchObject({ statusCode: 404 });
+      const result = await updateAnswerService(ANSWER_ID, '  New text  ', author);
+
+      expect(Answer.findById).toHaveBeenCalledWith(ANSWER_ID);
+      expect(select).toHaveBeenCalledWith('author answerText');
+      expect(Answer.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: ANSWER_ID, author: AUTHOR_ID },
+        { $set: { answerText: 'New text', editedAt: expect.any(Date) } },
+        { new: true, runValidators: true },
+      );
+      const [, update] = Answer.findOneAndUpdate.mock.calls[0];
+      expect(Object.keys(update.$set).sort()).toEqual(['answerText', 'editedAt']);
+      expect(populate).toHaveBeenCalledWith('author', 'name');
+      expect(result).toEqual(populated);
     });
 
-    // Authorization case - not author or admin
-    it('should throw 403 if user is not the author or admin', async () => {
-      // Arrange
-      const loggedInUser = { id: 'otherUser', isAdmin: false };
-      const mockAnswer = {
-        _id: 'answer123',
-        author: { toString: () => 'user123' },
-        answerText: 'Original text',
-        save: vi.fn(),
-      };
-      Answer.findById = vi.fn().mockResolvedValue(mockAnswer);
+    it('throws 400 for a malformed ID without querying', async () => {
+      Answer.findById = vi.fn();
+      await expect(updateAnswerService('not-an-id', 'text', author)).rejects.toMatchObject({
+        message: 'Invalid answer ID',
+        statusCode: 400,
+      });
+      expect(Answer.findById).not.toHaveBeenCalled();
+    });
 
-      // Act & Assert
+    it('throws 404 if the answer does not exist', async () => {
+      mockFindSelect(null);
+      await expect(updateAnswerService(ANSWER_ID, 'text', author)).rejects.toMatchObject({
+        message: 'Answer not found',
+        statusCode: 404,
+      });
+    });
+
+    it('throws 403 for a non-author', async () => {
+      mockFindSelect(storedAnswer());
+      Answer.findOneAndUpdate = vi.fn();
       await expect(
-        updateAnswerService('answer123', 'Hacked text', loggedInUser)
-      ).rejects.toThrow('Not authorized to update this answer');
+        updateAnswerService(ANSWER_ID, 'Hacked', { id: OTHER_ID, isAdmin: false }),
+      ).rejects.toMatchObject({ message: 'Not authorized to update this answer', statusCode: 403 });
+      expect(Answer.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('throws 403 for an admin who is not the author', async () => {
+      mockFindSelect(storedAnswer());
+      Answer.findOneAndUpdate = vi.fn();
       await expect(
-        updateAnswerService('answer123', 'Hacked text', loggedInUser)
+        updateAnswerService(ANSWER_ID, 'Admin edit', { id: OTHER_ID, isAdmin: true }),
       ).rejects.toMatchObject({ statusCode: 403 });
+      expect(Answer.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('checks ownership before validating the body', async () => {
+      mockFindSelect(storedAnswer());
+      await expect(
+        updateAnswerService(ANSWER_ID, '   ', { id: OTHER_ID, isAdmin: false }),
+      ).rejects.toMatchObject({ statusCode: 403 });
+    });
+
+    it.each([
+      ['undefined', undefined],
+      ['empty', ''],
+      ['whitespace', '   '],
+      ['a number', 42],
+      ['an object', { $ne: '' }],
+    ])('throws 400 when answerText is %s', async (_label, value) => {
+      mockFindSelect(storedAnswer());
+      Answer.findOneAndUpdate = vi.fn();
+      await expect(updateAnswerService(ANSWER_ID, value, author)).rejects.toMatchObject({
+        message: 'Answer text is required',
+        statusCode: 400,
+      });
+      expect(Answer.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('throws 400 when answerText is longer than 10000 characters', async () => {
+      mockFindSelect(storedAnswer());
+      await expect(
+        updateAnswerService(ANSWER_ID, 'a'.repeat(10001), author),
+      ).rejects.toMatchObject({
+        message: 'Answer text must be at most 10000 characters',
+        statusCode: 400,
+      });
+    });
+
+    it('skips the write and keeps editedAt when nothing changed', async () => {
+      const current = { _id: ANSWER_ID, answerText: 'Old text', editedAt: null };
+      const populate = vi.fn().mockResolvedValue(current);
+      const select = vi.fn().mockResolvedValue(storedAnswer());
+      Answer.findById = vi.fn()
+        .mockReturnValueOnce({ select })
+        .mockReturnValueOnce({ populate });
+      Answer.findOneAndUpdate = vi.fn();
+
+      const result = await updateAnswerService(ANSWER_ID, '  Old text ', author);
+
+      expect(Answer.findOneAndUpdate).not.toHaveBeenCalled();
+      expect(result).toEqual(current);
+    });
+
+    it('throws 404 when the conditional update matches nothing', async () => {
+      mockFindSelect(storedAnswer());
+      Answer.findOneAndUpdate = vi.fn().mockReturnValue({
+        populate: vi.fn().mockResolvedValue(null),
+      });
+      await expect(updateAnswerService(ANSWER_ID, 'New text', author)).rejects.toMatchObject({
+        message: 'Answer not found',
+        statusCode: 404,
+      });
     });
   });
 

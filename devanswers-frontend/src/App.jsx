@@ -4,7 +4,7 @@ import { useDispatch, useSelector } from 'react-redux';
 
 import Home from './pages/Question/Home.jsx';
 import QuestionDetail from './pages/Question/QuestionDetail.jsx';
-import PostQuestion from './pages/Question/PostQuestion.jsx';
+import PostQuestion, { EditQuestionPage } from './pages/Question/PostQuestion.jsx';
 import Login from './pages/Auth/Login.jsx';
 import Register from './pages/Auth/Register.jsx';
 import Profile from './pages/Profile/Profile.jsx';
@@ -32,6 +32,7 @@ function App() {
             <Route element={<SideBarLayout><Outlet /></SideBarLayout>}>
               <Route path='/' element={<Home />} />
               <Route path='/question/:id' element={<QuestionDetail />} />
+              <Route path='/question/:id/edit' element={<EditQuestionPage />} />
               <Route path='/ask' element={<PostQuestion />} />
               <Route path='/tags' element={<Tags />} />
               <Route path='/profile' element={<Profile />} />

@@ -99,3 +99,24 @@ describe('Home Page', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/ask');
   });
 });
+
+// Spec 002, AC-2: edit controls live only on the detail page
+describe('Home Page edit controls', () => {
+  it('renders no edit control even when the user is the author', () => {
+    renderHome(
+      [{
+        _id: 'q1',
+        title: 'My own question',
+        description: 'Body',
+        voteCount: 0,
+        answerCount: 0,
+        tags: [],
+        author: { _id: 'u1', name: 'Me' },
+        createdAt: '2026-01-01T00:00:00.000Z',
+      }],
+      { userId: 'u1', token: 'tok' }
+    );
+    expect(screen.getByText('My own question')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /edit (question|answer)/i })).not.toBeInTheDocument();
+  });
+});

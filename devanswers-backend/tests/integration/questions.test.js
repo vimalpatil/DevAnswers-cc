@@ -277,9 +277,17 @@ describe('Questions API', () => {
     expect(response.body.message).toBe('Question updated successfully');
     expect(response.body.data.title).toBe(updateData.title);
     expect(response.body.data.description).toBe(updateData.description);
+    expect(response.body.data.author.name).toBe('Test User');
+    expect(response.body.data.tags.map((t) => t.name)).toEqual(['updated', 'tags']);
+    expect(response.body.data.editedAt).toBeTruthy();
 
     const updatedQuestion = await Question.findById(question._id);
     expect(updatedQuestion.title).toBe(updateData.title);
+
+    const getRes = await request(app).get(`/api/questions/${question._id}`);
+    expect(getRes.body.data.title).toBe(updateData.title);
+    expect(getRes.body.data.tags.map((t) => t.name)).toEqual(['updated', 'tags']);
+    expect(getRes.body.data.editedAt).toBeTruthy();
   });
 
   it('PUT /api/questions/:id -> should return 404 for non-existent question ID', async () => {
@@ -330,7 +338,7 @@ describe('Questions API', () => {
     expect(response.body.message).toBe('Not authorized to update this question');
   });
 
-  it('PUT /api/questions/:id -> should allow an admin to update any question', async () => {
+  it('PUT /api/questions/:id -> should return 403 when an admin edits someone else\'s question', async () => {
     const adminEmail = `admin+${Date.now()}@example.com`;
     await request(app).post('/api/auth/register').send({ name: 'Admin', email: adminEmail, password: 'password123', isAdmin: true });
     const adminLogin = await request(app).post('/api/auth/login').send({ email: adminEmail, password: 'password123' });
@@ -343,9 +351,13 @@ describe('Questions API', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ title: 'Admin Updated Title', description: 'Admin Updated', tags: 'admin' });
 
-    expect(response.status).toBe(200);
-    expect(response.body.success).toBe(true);
-    expect(response.body.data.title).toBe('Admin Updated Title');
+    expect(response.status).toBe(403);
+    expect(response.body.success).toBe(false);
+    expect(response.body.message).toBe('Not authorized to update this question');
+
+    const unchanged = await Question.findById(question._id);
+    expect(unchanged.title).toBe(question.title);
+    expect(unchanged.editedAt).toBeNull();
   });
 
   // -------------------

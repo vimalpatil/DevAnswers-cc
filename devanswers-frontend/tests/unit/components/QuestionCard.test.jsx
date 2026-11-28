@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+import { describe, it, expect } from 'vitest';
 import { Provider } from 'react-redux';
 import { BrowserRouter } from 'react-router-dom';
 import { configureStore } from '@reduxjs/toolkit';
@@ -146,5 +146,13 @@ describe('QuestionCard bookmark control', () => {
   it('renders the bookmark control even without a bookmark slice', () => {
     renderQuestionCard();
     expect(screen.getByRole('button', { name: 'Bookmark question' })).toBeInTheDocument();
+  });
+});
+
+// Spec 002, AC-2: edit controls live only on the detail page
+describe('QuestionCard edit controls', () => {
+  it('renders no edit control even when the user is the author', () => {
+    renderQuestionCard({ ...mockQuestion, author: { _id: 'user-1', name: 'Me' } });
+    expect(screen.queryByRole('button', { name: /edit (question|answer)/i })).not.toBeInTheDocument();
   });
 });

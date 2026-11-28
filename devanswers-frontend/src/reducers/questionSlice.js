@@ -6,8 +6,13 @@ import {
   upvoteQuestion,
   downvoteQuestion,
   createAnswerForQuestion,
+  updateQuestion,
 } from "../services/questionService.js";
-import { upvoteAnswer, downvoteAnswer } from "../services/answerService.js";
+import {
+  upvoteAnswer,
+  downvoteAnswer,
+  updateAnswer,
+} from "../services/answerService.js";
 
 const initialState = {
   questions: [],
@@ -122,6 +127,59 @@ export const postAnswer = createAsyncThunk(
   },
 );
 
+export const SESSION_EXPIRED_MESSAGE =
+  "Your session has expired — please log in again.";
+
+const editErrorMessage = (error, fallback) =>
+  error.response?.status === 401
+    ? SESSION_EXPIRED_MESSAGE
+    : error.response?.data?.message || error.message || fallback;
+
+// Edit thunks are pessimistic and deliberately have no pending/rejected cases:
+// they must never touch the shared `loading`/`error` flags, which would swap
+// QuestionDetail for a full-page spinner or error. Components keep their own
+// saving/error state and call `.unwrap()`.
+export const editQuestion = createAsyncThunk(
+  "question/editQuestion",
+  async ({ id, title, description, tags }, { getState, rejectWithValue }) => {
+    try {
+      const { token } = getState().user.userInfo || {};
+      return await updateQuestion(id, { title, description, tags }, token);
+    } catch (error) {
+      return rejectWithValue(
+        editErrorMessage(error, "Failed to update question"),
+      );
+    }
+  },
+);
+
+export const editAnswer = createAsyncThunk(
+  "question/editAnswer",
+  async ({ answerId, answerText }, { getState, rejectWithValue }) => {
+    try {
+      const { token } = getState().user.userInfo || {};
+      return await updateAnswer(answerId, answerText, token);
+    } catch (error) {
+      return rejectWithValue(editErrorMessage(error, "Failed to update answer"));
+    }
+  },
+);
+
+const EDITED_QUESTION_FIELDS = [
+  "title",
+  "description",
+  "tags",
+  "editedAt",
+  "updatedAt",
+];
+const EDITED_ANSWER_FIELDS = ["answerText", "editedAt", "updatedAt"];
+
+const mergeFields = (target, source, fields) => {
+  fields.forEach((field) => {
+    if (field in source) target[field] = source[field];
+  });
+};
+
 const questionSlice = createSlice({
   name: "question",
   initialState,
@@ -218,6 +276,26 @@ const questionSlice = createSlice({
       .addCase(postAnswer.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload || action.error.message;
+      })
+      // Merge only the edited fields so answers and vote state are kept.
+      .addCase(editQuestion.fulfilled, (state, action) => {
+        const updated = action.payload;
+        if (state.currentQuestion?._id === updated._id) {
+          mergeFields(state.currentQuestion, updated, EDITED_QUESTION_FIELDS);
+        }
+        const listed = state.questions.find((q) => q._id === updated._id);
+        if (listed) {
+          mergeFields(listed, updated, EDITED_QUESTION_FIELDS);
+        }
+      })
+      .addCase(editAnswer.fulfilled, (state, action) => {
+        const updated = action.payload;
+        const answer = state.currentQuestion?.answers?.find(
+          (a) => a._id === updated._id,
+        );
+        if (answer) {
+          mergeFields(answer, updated, EDITED_ANSWER_FIELDS);
+        }
       });
   },
 });

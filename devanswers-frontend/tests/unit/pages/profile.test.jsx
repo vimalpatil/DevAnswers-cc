@@ -221,3 +221,27 @@ describe('Profile Page - Saved Questions', () => {
     expect(within(section).getByText('How do I manage state in React?')).toBeInTheDocument();
   });
 });
+
+// Spec 002, AC-2: edit controls live only on the detail page
+describe('Profile Page edit controls', () => {
+  it('renders no edit control on saved questions the user wrote', async () => {
+    // Both bookmarked fixtures are by user-1, who is logged in here
+    seedBookmarks(mockBookmarkedQuestions);
+    const store = configureStore({
+      reducer: {
+        user: () => ({ userInfo: { userId: 'user-1', name: 'Alice Johnson', token: 'tok' } }),
+        bookmark: bookmarkReducer,
+      },
+    });
+    render(
+      <Provider store={store}>
+        <BrowserRouter>
+          <Profile />
+        </BrowserRouter>
+      </Provider>
+    );
+
+    await screen.findByText('How do I center a div in CSS?');
+    expect(screen.queryByRole('button', { name: /edit (question|answer)/i })).not.toBeInTheDocument();
+  });
+});

@@ -168,9 +168,11 @@ describe('questionController', () => {
       // Assert
       expect(questionService.updateQuestionService).toHaveBeenCalledWith(
         '1',
-        updateData.title,
-        updateData.description,
-        updateData.tags,
+        {
+          title: updateData.title,
+          description: updateData.description,
+          tags: updateData.tags,
+        },
         req.user
       );
       expect(res.status).toHaveBeenCalledWith(200);

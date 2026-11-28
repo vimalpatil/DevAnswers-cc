@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { Provider } from 'react-redux';
 import { BrowserRouter } from 'react-router-dom';
 import { configureStore } from '@reduxjs/toolkit';
@@ -168,5 +168,14 @@ describe('QuestionList custom props', () => {
 
     const titles = screen.getAllByRole('link').map((a) => a.textContent);
     expect(titles).toEqual(['Second Question', 'First Question']);
+  });
+});
+
+// Spec 002, AC-2: edit controls live only on the detail page
+describe('QuestionList edit controls', () => {
+  it('renders no edit control even when the user wrote every question', () => {
+    renderQuestionList(mockQuestions.map((q) => ({ ...q, author: { _id: 'user-1', name: 'Me' } })));
+    expect(screen.getByText('First Question')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /edit (question|answer)/i })).not.toBeInTheDocument();
   });
 });

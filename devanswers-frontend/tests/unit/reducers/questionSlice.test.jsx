@@ -10,6 +10,8 @@ import { describe, it, expect } from 'vitest';
 import questionReducer, {
   fetchQuestions,
   postQuestion,
+  editQuestion,
+  editAnswer,
 } from '../../../src/reducers/questionSlice.js';
 
 describe('questionSlice', () => {
@@ -99,5 +101,108 @@ describe('questionSlice', () => {
       expect(state.loading).toBe(false);
       expect(state.error).toBe(errorMessage);
     });
+  });
+});
+
+// Edit thunks (spec 002 §6.3): fulfilled-only merges that never touch loading/error.
+describe('questionSlice edit thunks', () => {
+  const answers = [
+    { _id: 'a1', answerText: 'First', voteCount: 3, editedAt: null },
+    { _id: 'a2', answerText: 'Second', voteCount: 1, editedAt: null },
+  ];
+  const baseState = {
+    questions: [
+      { _id: 'q1', title: 'Old', description: 'Old body', tags: [], voteCount: 5, answerCount: 2 },
+      { _id: 'q2', title: 'Other', description: 'Other body', tags: [] },
+    ],
+    currentQuestion: {
+      _id: 'q1',
+      title: 'Old',
+      description: 'Old body',
+      tags: [{ _id: 't1', name: 'react' }],
+      voteCount: 5,
+      upvotes: ['u9'],
+      answers,
+      editedAt: null,
+    },
+    loading: false,
+    error: 'previous error',
+  };
+
+  const savedQuestion = {
+    _id: 'q1',
+    title: 'New',
+    description: 'New body',
+    tags: [{ _id: 't2', name: 'node' }],
+    voteCount: 0, // stale vote data from the server must not overwrite the store
+    editedAt: '2026-02-01T00:00:00.000Z',
+    updatedAt: '2026-02-01T00:00:00.000Z',
+  };
+
+  it('editQuestion.fulfilled merges into currentQuestion and keeps answers and votes', () => {
+    const state = questionReducer(
+      baseState,
+      editQuestion.fulfilled(savedQuestion, '', { id: 'q1' })
+    );
+
+    expect(state.currentQuestion).toMatchObject({
+      title: 'New',
+      description: 'New body',
+      tags: [{ _id: 't2', name: 'node' }],
+      editedAt: '2026-02-01T00:00:00.000Z',
+      updatedAt: '2026-02-01T00:00:00.000Z',
+      voteCount: 5,
+      upvotes: ['u9'],
+    });
+    expect(state.currentQuestion.answers).toEqual(answers);
+  });
+
+  it('editQuestion.fulfilled updates the matching questions[] entry only', () => {
+    const state = questionReducer(
+      baseState,
+      editQuestion.fulfilled(savedQuestion, '', { id: 'q1' })
+    );
+
+    expect(state.questions[0]).toMatchObject({ title: 'New', voteCount: 5, answerCount: 2 });
+    expect(state.questions[1]).toEqual(baseState.questions[1]);
+  });
+
+  it('editQuestion.fulfilled leaves a different currentQuestion alone', () => {
+    const state = questionReducer(
+      { ...baseState, currentQuestion: { ...baseState.currentQuestion, _id: 'q2' } },
+      editQuestion.fulfilled(savedQuestion, '', { id: 'q1' })
+    );
+    expect(state.currentQuestion.title).toBe('Old');
+  });
+
+  it('editAnswer.fulfilled replaces only the matching answer', () => {
+    const state = questionReducer(
+      baseState,
+      editAnswer.fulfilled(
+        { _id: 'a2', answerText: 'Edited', voteCount: 0, editedAt: '2026-02-02T00:00:00.000Z' },
+        '',
+        { answerId: 'a2' }
+      )
+    );
+
+    expect(state.currentQuestion.answers[0]).toEqual(answers[0]);
+    expect(state.currentQuestion.answers[1]).toEqual({
+      _id: 'a2',
+      answerText: 'Edited',
+      voteCount: 1,
+      editedAt: '2026-02-02T00:00:00.000Z',
+    });
+  });
+
+  it.each([
+    ['editQuestion.pending', editQuestion.pending('', { id: 'q1' })],
+    ['editQuestion.fulfilled', editQuestion.fulfilled(savedQuestion, '', { id: 'q1' })],
+    ['editQuestion.rejected', editQuestion.rejected(null, '', { id: 'q1' }, 'Nope')],
+    ['editAnswer.pending', editAnswer.pending('', { answerId: 'a1' })],
+    ['editAnswer.rejected', editAnswer.rejected(null, '', { answerId: 'a1' }, 'Nope')],
+  ])('%s never changes loading or error', (_label, action) => {
+    const state = questionReducer(baseState, action);
+    expect(state.loading).toBe(false);
+    expect(state.error).toBe('previous error');
   });
 });

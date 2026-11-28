@@ -1,4 +1,4 @@
-import mongoose, { Mongoose } from "mongoose";
+import mongoose from "mongoose";
 
 const questionSchema = new mongoose.Schema({
     title: {
@@ -33,7 +33,12 @@ const questionSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
         required: true,
-    }
+    },
+    // Set only when the author changes the content (never on views or votes).
+    editedAt: {
+        type: Date,
+        default: null,
+    },
 }, {
     timestamps: true,
 });

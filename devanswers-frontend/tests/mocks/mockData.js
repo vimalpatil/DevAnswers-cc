@@ -30,6 +30,7 @@ export const mockAnswers = [
     upvotes: [],
     downvotes: [],
     createdAt: '2026-01-15T12:00:00.000Z',
+    editedAt: '2026-01-16T09:00:00.000Z',
   },
   {
     _id: 'answer-2',
@@ -39,6 +40,7 @@ export const mockAnswers = [
     upvotes: [],
     downvotes: [],
     createdAt: '2026-01-15T13:00:00.000Z',
+    editedAt: null,
   },
 ];
 
@@ -55,6 +57,7 @@ export const mockQuestions = [
     answers: mockAnswers,
     answerCount: 2,
     createdAt: '2026-01-14T10:00:00.000Z',
+    editedAt: null,
   },
   {
     _id: 'question-2',
@@ -68,6 +71,7 @@ export const mockQuestions = [
     answers: [],
     answerCount: 0,
     createdAt: '2026-01-15T09:00:00.000Z',
+    editedAt: '2026-01-17T11:30:00.000Z',
   },
   {
     _id: 'question-3',
@@ -81,6 +85,7 @@ export const mockQuestions = [
     answers: [],
     answerCount: 0,
     createdAt: '2026-01-16T08:00:00.000Z',
+    editedAt: null,
   },
 ];
 

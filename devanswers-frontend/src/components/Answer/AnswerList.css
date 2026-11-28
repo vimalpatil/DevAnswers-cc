@@ -114,3 +114,25 @@
   line-height: 1.6;
   color: var(--text-color);
 }
+
+/* Inline answer editing (spec 002) */
+.alist-edit-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  line-height: 1;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.alist-edit-btn:hover,
+.alist-edit-btn:focus-visible {
+  color: var(--primary-color);
+}
+
+.alist-editor-input {
+  font-size: 1rem;
+  line-height: 1.6;
+  border-radius: 8px;
+}

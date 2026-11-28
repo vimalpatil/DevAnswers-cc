@@ -217,9 +217,12 @@ describe("Answers API", () => {
     expect(response.body.success).toBe(true);
     expect(response.body.message).toBe("Answer updated successfully");
     expect(response.body.data.answerText).toBe(updateData.answerText);
+    expect(response.body.data.author.name).toBe("Test User");
+    expect(response.body.data.editedAt).toBeTruthy();
 
     const updatedAnswer = await Answer.findById(answer._id);
     expect(updatedAnswer.answerText).toBe(updateData.answerText);
+    expect(updatedAnswer.editedAt).toBeInstanceOf(Date);
   });
 
   it("PUT /api/answers/:answerId -> should return 404 for non-existent answer ID", async () => {
@@ -273,7 +276,7 @@ describe("Answers API", () => {
     expect(response.body.message).toBe("Not authorized to update this answer");
   });
 
-  it("PUT /api/answers/:answerId -> should allow an admin to update any answer", async () => {
+  it("PUT /api/answers/:answerId -> should return 403 when an admin edits someone else's answer", async () => {
     const adminEmail = `admin+${Date.now()}@example.com`;
     await request(app)
       .post("/api/auth/register")
@@ -295,9 +298,13 @@ describe("Answers API", () => {
       .set("Authorization", `Bearer ${adminToken}`)
       .send({ answerText: "Admin updated this answer" });
 
-    expect(response.status).toBe(200);
-    expect(response.body.success).toBe(true);
-    expect(response.body.data.answerText).toBe("Admin updated this answer");
+    expect(response.status).toBe(403);
+    expect(response.body.success).toBe(false);
+    expect(response.body.message).toBe("Not authorized to update this answer");
+
+    const unchanged = await Answer.findById(answer._id);
+    expect(unchanged.answerText).toBe("This is a test answer");
+    expect(unchanged.editedAt).toBeNull();
   });
 
   // -------------------

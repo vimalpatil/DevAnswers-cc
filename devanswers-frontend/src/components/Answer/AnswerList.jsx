@@ -1,16 +1,23 @@
 import { useState } from 'react';
 import { Card, Row, Col, Button } from 'react-bootstrap';
 import { useDispatch, useSelector } from 'react-redux';
-import { FaUser, FaClock } from 'react-icons/fa';
+import { FaUser, FaClock, FaPen } from 'react-icons/fa';
 import { voteAnswer } from '../../reducers/questionSlice';
 import { formatDate } from '../../utils/timeFormat';
 import VoteButtons from '../Shared/VoteButtons';
+import EditedIndicator from '../Shared/EditedIndicator';
+import AnswerEditor from './AnswerEditor';
 import { summarizeAnswers } from '../../services/aiService';
 import './AnswerList.css';
 
 const AnswerList = ({ answers, question }) => {
   const dispatch = useDispatch();
   const userInfo = useSelector((state) => state.user.userInfo);
+
+  // Only one answer can be in edit mode at a time; opening another replaces it.
+  const [editingId, setEditingId] = useState(null);
+  const isOwnAnswer = (answer) =>
+    !!userInfo && answer.author?._id === userInfo.userId;
 
   const [summary, setSummary] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
@@ -93,10 +100,14 @@ const AnswerList = ({ answers, question }) => {
 
                   {/* Answer Content */}
                   <Col>
-                    <div className="mb-2 alist-content">
-                      {answer.answerText}
-                    </div>
-                    <div className="mt-2 d-flex align-items-center gap-2 alist-meta">
+                    {editingId === answer._id ? (
+                      <AnswerEditor answer={answer} onDone={() => setEditingId(null)} />
+                    ) : (
+                      <div className="mb-2 alist-content">
+                        {answer.answerText}
+                      </div>
+                    )}
+                    <div className="mt-2 d-flex flex-wrap align-items-center gap-2 alist-meta">
                       <FaUser className="alist-icon-sm" />
                       <span>Answered by </span>
                       <strong className="alist-author">{answer.author?.name}</strong>
@@ -106,6 +117,18 @@ const AnswerList = ({ answers, question }) => {
                           <FaClock className="alist-icon-sm" />
                           <span>{formatDate(answer.createdAt)}</span>
                         </>
+                      )}
+                      <EditedIndicator editedAt={answer.editedAt} />
+                      {isOwnAnswer(answer) && editingId !== answer._id && (
+                        <Button
+                          variant="link"
+                          className="ms-auto alist-edit-btn"
+                          aria-label="Edit answer"
+                          title="Edit answer"
+                          onClick={() => setEditingId(answer._id)}
+                        >
+                          <FaPen />
+                        </Button>
                       )}
                     </div>
                   </Col>

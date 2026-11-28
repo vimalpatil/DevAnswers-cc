@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { createAppError } from '../utils/createAppError.js';
 import Answer from '../models/Answer.js';
 import { handleVote } from './voteService.js';
@@ -32,24 +33,53 @@ export const createAnswerService = async ({ questionId, answerText, author }) =>
   return populatedAnswer;
 };
 
+export const MAX_ANSWER_LENGTH = 10000;
+
+// Author-only (admins cannot edit other people's answers). Checks run in the
+// order ID → existence → ownership → body, so non-authors learn nothing from
+// validation messages.
 export const updateAnswerService = async (answerId, answerText, loggedInUser) => {
-  const answer = await Answer.findById(answerId);
+  if (!mongoose.Types.ObjectId.isValid(answerId)) {
+    throw createAppError('Invalid answer ID', 400);
+  }
+
+  const answer = await Answer.findById(answerId).select('author answerText');
 
   if (!answer) {
     throw createAppError('Answer not found', 404);
   }
 
-  if (
-    answer.author.toString() !== loggedInUser.id.toString() &&
-    !loggedInUser.isAdmin
-  ) {
+  if (answer.author.toString() !== loggedInUser.id.toString()) {
     throw createAppError('Not authorized to update this answer', 403);
   }
 
-  answer.answerText = answerText;
-  await answer.save();
+  if (typeof answerText !== 'string' || !answerText.trim()) {
+    throw createAppError('Answer text is required', 400);
+  }
 
-  return Answer.findById(answerId).populate('author', 'name');
+  const trimmed = answerText.trim();
+
+  if (trimmed.length > MAX_ANSWER_LENGTH) {
+    throw createAppError(`Answer text must be at most ${MAX_ANSWER_LENGTH} characters`, 400);
+  }
+
+  // No real change: return the current document without touching editedAt.
+  if (trimmed === answer.answerText?.trim()) {
+    return Answer.findById(answerId).populate('author', 'name');
+  }
+
+  // Conditional on author so ownership is enforced atomically with the write.
+  const updated = await Answer.findOneAndUpdate(
+    { _id: answerId, author: loggedInUser.id },
+    { $set: { answerText: trimmed, editedAt: new Date() } },
+    { new: true, runValidators: true },
+  ).populate('author', 'name');
+
+  if (!updated) {
+    throw createAppError('Answer not found', 404);
+  }
+
+  return updated;
 };
 
 export const deleteAnswerService = async (answerId, loggedInUser) => {

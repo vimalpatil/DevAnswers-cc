@@ -1,8 +1,10 @@
+import mongoose from "mongoose";
 import Question from "../models/Question.js";
 import { createAppError } from "../utils/createAppError.js";
 import Answer from "../models/Answer.js";
 import Tag from "../models/Tag.js";
 import { handleVote } from "./voteService.js";
+import { parseTagNames, resolveTagIds } from "./tagHelper.js";
 import { withAnswerCounts } from "./answerCountHelper.js";
 import { deleteBookmarksForQuestion } from "./bookmarkService.js";
 import { getAI, extractJSON } from "../utils/geminiClient.js";
@@ -82,48 +84,93 @@ export const createQuestionService = async ({
   return newQuestion;
 };
 
+export const MAX_TITLE_LENGTH = 200;
+export const MAX_DESCRIPTION_LENGTH = 10000;
+
+const findPopulatedQuestion = (id) =>
+  Question.findById(id)
+    .populate({ path: "author", select: "name" })
+    .populate("tags");
+
+// Author-only (admins cannot edit other people's questions). Checks run in the
+// order ID → existence → ownership → body, so non-authors learn nothing from
+// validation messages. Only title, description and tags are ever written.
 export const updateQuestionService = async (
   id,
-  title,
-  description,
-  tags,
+  { title, description, tags } = {},
   loggedInUser,
 ) => {
-  const question = await Question.findById(id);
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw createAppError("Invalid question ID", 400);
+  }
+
+  const question = await Question.findById(id).select(
+    "author title description tags",
+  );
 
   if (!question) {
     throw createAppError("Question not found", 404);
   }
 
-  if (
-    question.author.toString() !== loggedInUser.id.toString() &&
-    !loggedInUser.isAdmin
-  ) {
+  if (question.author.toString() !== loggedInUser.id.toString()) {
     throw createAppError("Not authorized to update this question", 403);
   }
 
-  const tagArray = tags
-    .trim()
-    .split(",")
-    .map((tag) => tag.trim());
+  if (typeof title !== "string" || !title.trim()) {
+    throw createAppError("Title is required", 400);
+  }
+  if (typeof description !== "string" || !description.trim()) {
+    throw createAppError("Description is required", 400);
+  }
 
-  const tagIds = await Promise.all(
-    tagArray.map(async (tag) => {
-      const existingTag = await Tag.findOne({ name: tag });
-      if (existingTag) {
-        return existingTag._id;
-      }
-      const newTag = new Tag({ name: tag });
-      await newTag.save();
-      return newTag._id;
-    }),
-  );
+  const trimmedTitle = title.trim();
+  const trimmedDescription = description.trim();
 
-  const updatedQuestion = await Question.findByIdAndUpdate(
-    id,
-    { title, description, tags: tagIds },
-    { new: true },
-  );
+  if (trimmedTitle.length > MAX_TITLE_LENGTH) {
+    throw createAppError(
+      `Title must be at most ${MAX_TITLE_LENGTH} characters`,
+      400,
+    );
+  }
+  if (trimmedDescription.length > MAX_DESCRIPTION_LENGTH) {
+    throw createAppError(
+      `Description must be at most ${MAX_DESCRIPTION_LENGTH} characters`,
+      400,
+    );
+  }
+
+  const tagNames = parseTagNames(tags);
+  // First call that can write anything (creates missing tags).
+  const tagIds = await resolveTagIds(tagNames);
+
+  const sameTags =
+    tagIds.length === question.tags.length &&
+    tagIds.every((tagId, i) => tagId.toString() === question.tags[i].toString());
+
+  const unchanged =
+    trimmedTitle === question.title?.trim() &&
+    trimmedDescription === question.description?.trim() &&
+    sameTags;
+
+  if (unchanged) {
+    return findPopulatedQuestion(id);
+  }
+
+  // Conditional on author so ownership is enforced atomically with the write.
+  const updatedQuestion = await Question.findOneAndUpdate(
+    { _id: id, author: loggedInUser.id },
+    {
+      $set: {
+        title: trimmedTitle,
+        description: trimmedDescription,
+        tags: tagIds,
+        editedAt: new Date(),
+      },
+    },
+    { new: true, runValidators: true },
+  )
+    .populate({ path: "author", select: "name" })
+    .populate("tags");
 
   if (!updatedQuestion) {
     throw createAppError("Question not found", 404);

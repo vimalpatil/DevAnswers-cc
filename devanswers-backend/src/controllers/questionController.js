@@ -46,9 +46,11 @@ export const createQuestion = async (req, res) => {
 
 export const updateQuestion = async (req, res) => {
     const { id } = req.params;
-    let { title, description, tags } = req.body;
+    // Express 5 leaves req.body undefined when there is no JSON body; let the
+    // service answer with a 400 instead of crashing here with a 500.
+    const { title, description, tags } = req.body ?? {};
 
-    const updatedQuestion = await updateQuestionService(id, title, description, tags, req.user);
+    const updatedQuestion = await updateQuestionService(id, { title, description, tags }, req.user);
 
     res.status(200).json({
         success: true,

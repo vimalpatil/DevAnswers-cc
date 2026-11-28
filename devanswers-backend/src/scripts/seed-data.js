@@ -128,6 +128,8 @@ export const questions = [
     upvotes: [u2, u3],
     downvotes: [],
     views: 10,
+    // Seeded as edited so the "edited" indicator can be checked by hand (spec 002).
+    editedAt: new Date(),
     author: u1,
   },
   {
@@ -241,6 +243,7 @@ export const answers = [
     author: u2,
     upvotes: [u1],
     downvotes: [],
+    editedAt: new Date(),
   },
   {
     questionId: q1,
