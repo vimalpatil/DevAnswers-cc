@@ -3,12 +3,12 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Provider } from 'react-redux';
-import { BrowserRouter, MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter, MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../mocks/server';
 import { mockQuestions } from '../../mocks/mockData';
 import { configureStore } from '@reduxjs/toolkit';
-import PostQuestion from '../../../src/pages/Question/PostQuestion';
+import PostQuestion, { EditQuestionPage } from '../../../src/pages/Question/PostQuestion';
 import questionReducer from '../../../src/reducers/questionSlice';
 
 const createMockStore = () => {
@@ -320,5 +320,57 @@ describe('PostQuestion edit mode', () => {
     renderEdit({ currentQuestion: null, questionId: 'does-not-exist' });
     expect(await screen.findByText(/question not found/i)).toBeInTheDocument();
     expect(screen.queryByLabelText('Title')).not.toBeInTheDocument();
+  });
+});
+
+// The /question/:id/edit route element remounts the form per question ID
+describe('EditQuestionPage', () => {
+  // Navigates between edit pages without leaving the route, like back/forward
+  const GoTo = ({ to }) => {
+    const navigate = useNavigate();
+    return <button type="button" onClick={() => navigate(to)}>go {to}</button>;
+  };
+
+  it('does not carry errors or input from one question over to another', async () => {
+    server.use(
+      http.put('http://localhost:3000/api/questions/:id', () =>
+        HttpResponse.json({ success: false, message: 'Something went wrong' }, { status: 500 })
+      )
+    );
+    const store = configureStore({
+      reducer: {
+        question: questionReducer,
+        user: () => ({ userInfo: { userId: 'user-1', token: 'mock-jwt-token-alice' } }),
+      },
+      preloadedState: {
+        question: { questions: [], currentQuestion: mockQuestions[0], loading: false, error: null },
+      },
+    });
+    render(
+      <Provider store={store}>
+        <MemoryRouter initialEntries={['/question/question-1/edit']}>
+          <GoTo to="/question/question-3/edit" />
+          <Routes>
+            <Route path="/question/:id/edit" element={<EditQuestionPage />} />
+          </Routes>
+        </MemoryRouter>
+      </Provider>
+    );
+
+    // Question 1: a failed save leaves an alert, an inline error and typed input
+    await userEvent.type(screen.getByLabelText('Title'), ' (draft)');
+    await userEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Something went wrong');
+    await userEvent.clear(screen.getByLabelText('Description'));
+    await userEvent.click(screen.getByRole('button', { name: /save changes/i }));
+    expect(screen.getByText('Description is required')).toBeInTheDocument();
+
+    // Question 3 (also by user-1) starts clean and pre-fills its own values
+    await userEvent.click(screen.getByRole('button', { name: 'go /question/question-3/edit' }));
+    expect(await screen.findByDisplayValue('How do I center a div in CSS?')).toBeInTheDocument();
+    expect(screen.getByLabelText('Tags (comma-separated)')).toHaveValue('css');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText('Description is required')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Description')).not.toHaveClass('is-invalid');
   });
 });

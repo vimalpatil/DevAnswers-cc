@@ -73,11 +73,6 @@ const PostQuestion = ({ mode = 'create' }) => {
   const questionLoaded = isEdit && currentQuestion?._id === id;
   const isAuthor = questionLoaded && isLoggedIn && currentQuestion.author?._id === userInfo.userId;
 
-  // A different :id means a different question to pre-fill.
-  useEffect(() => {
-    prefilledRef.current = false;
-  }, [id]);
-
   // Edit mode: load the question unless the store already holds it.
   useEffect(() => {
     if (!isEdit || !isLoggedIn || currentQuestion?._id === id) return;
@@ -392,6 +387,16 @@ const PostQuestion = ({ mode = 'create' }) => {
       </Card>
     </PageShell>
   );
+};
+
+/**
+ * Route element for /question/:id/edit. Keying by :id remounts the form when
+ * the ID changes (e.g. back/forward between two edit pages), so errors, AI
+ * suggestions and the pre-fill from one question never carry over to another.
+ */
+export const EditQuestionPage = () => {
+  const { id } = useParams();
+  return <PostQuestion key={id} mode="edit" />;
 };
 
 export default PostQuestion;

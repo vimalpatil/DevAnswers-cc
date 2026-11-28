@@ -169,6 +169,24 @@ describe("Edit posts API (spec 002)", () => {
       );
     });
 
+    it("returns 400 (not 500) when the request has no JSON body", async () => {
+      const question = await createQuestion();
+
+      const noBody = await request(app)
+        .put(`/api/questions/${question._id}`)
+        .set("Authorization", `Bearer ${author.token}`);
+      const textBody = await request(app)
+        .put(`/api/questions/${question._id}`)
+        .set("Authorization", `Bearer ${author.token}`)
+        .set("Content-Type", "text/plain")
+        .send("hello");
+
+      expect(noBody.status).toBe(400);
+      expect(noBody.body.message).toBe("Title is required");
+      expect(textBody.status).toBe(400);
+      expect(textBody.body.message).toBe("Title is required");
+    });
+
     it("creates no tags when the request is rejected", async () => {
       const question = await createQuestion();
       const before = await Tag.countDocuments();
@@ -292,6 +310,24 @@ describe("Edit posts API (spec 002)", () => {
       expect(res.status).toBe(400);
       expect(res.body.message).toBe("Answer text is required");
       expect((await Answer.findById(answer._id)).answerText).toBe("Original answer");
+    });
+
+    it("returns 400 (not 500) when the request has no JSON body", async () => {
+      const answer = await createAnswer();
+
+      const noBody = await request(app)
+        .put(`/api/answers/${answer._id}`)
+        .set("Authorization", `Bearer ${author.token}`);
+      const textBody = await request(app)
+        .put(`/api/answers/${answer._id}`)
+        .set("Authorization", `Bearer ${author.token}`)
+        .set("Content-Type", "text/plain")
+        .send("hello");
+
+      expect(noBody.status).toBe(400);
+      expect(noBody.body.message).toBe("Answer text is required");
+      expect(textBody.status).toBe(400);
+      expect(textBody.body.message).toBe("Answer text is required");
     });
 
     it("leaves editedAt null on a no-op save", async () => {
