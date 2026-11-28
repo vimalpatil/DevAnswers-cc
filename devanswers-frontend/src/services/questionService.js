@@ -55,3 +55,16 @@ export const createAnswerForQuestion = async (
   );
   return res.data.data;
 };
+
+export const updateQuestion = async (
+  id,
+  { title, description, tags },
+  token,
+) => {
+  const res = await axiosInstance.put(
+    QUESTION_API.UPDATE(id),
+    { title, description, tags },
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  return res.data.data;
+};

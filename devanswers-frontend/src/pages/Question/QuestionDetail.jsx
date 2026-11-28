@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Container, Row, Col, Spinner } from 'react-bootstrap';
 import { useSelector, useDispatch } from 'react-redux';
 
@@ -13,11 +13,27 @@ const QuestionDetail = () => {
   const { id } = useParams();
 
   const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const location = useLocation();
   const { currentQuestion, loading, error } = useSelector((state) => state.question);
 
+  // Read through refs so the fetch effect runs only when the ID changes,
+  // not on every store update or when the fromEdit flag is cleared below.
+  const currentIdRef = useRef(currentQuestion?._id);
+  currentIdRef.current = currentQuestion?._id;
+  const locationRef = useRef(location);
+  locationRef.current = location;
+
   useEffect(() => {
+    const { state, pathname } = locationRef.current;
+    // Coming back from a successful edit: the store already holds the saved
+    // question, so skip the refetch (it would flash a spinner and count a view).
+    if (state?.fromEdit && currentIdRef.current === id) {
+      navigate(pathname, { replace: true, state: null });
+      return;
+    }
     dispatch(fetchQuestionById(id));
-  }, [id, dispatch]);
+  }, [id, dispatch, navigate]);
 
   if (loading) {
     return (

@@ -1,8 +1,9 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Provider } from 'react-redux';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { server } from '../../mocks/server';
 import { configureStore } from '@reduxjs/toolkit';
 import QuestionDetail from '../../../src/pages/Question/QuestionDetail';
 
@@ -79,5 +80,81 @@ describe('QuestionDetail Page', () => {
     renderQuestionDetail({ currentQuestion: mockQuestion });
     expect(screen.getByText('react')).toBeInTheDocument();
     expect(screen.getByText('hooks')).toBeInTheDocument();
+  });
+});
+
+// Returning from a successful edit skips the refetch (spec 002 §6.2, AC-4)
+describe('QuestionDetail after an edit', () => {
+  const question = {
+    _id: 'q1',
+    title: 'Edited title',
+    description: 'Body',
+    tags: [],
+    author: { _id: 'u2', name: 'Alice' },
+    createdAt: '2026-01-15T00:00:00.000Z',
+    answers: [],
+  };
+
+  let getRequests = [];
+  const onRequest = ({ request }) => {
+    if (request.method === 'GET' && /\/questions\/[^/]+$/.test(request.url)) {
+      getRequests.push(request.url);
+    }
+  };
+
+  beforeEach(() => {
+    getRequests = [];
+    server.events.on('request:start', onRequest);
+  });
+
+  afterEach(() => {
+    server.events.removeListener('request:start', onRequest);
+  });
+
+  // Shows the current location state so the test can see the flag being cleared.
+  const LocationState = () => {
+    const location = useLocation();
+    return <div data-testid="location-state">{JSON.stringify(location.state)}</div>;
+  };
+
+  const renderAt = (entry) => {
+    const store = createMockStore({ currentQuestion: question });
+    render(
+      <Provider store={store}>
+        <MemoryRouter initialEntries={[entry]}>
+          <Routes>
+            <Route
+              path="/question/:id"
+              element={<><QuestionDetail /><LocationState /></>}
+            />
+          </Routes>
+        </MemoryRouter>
+      </Provider>
+    );
+  };
+
+  it('does not refetch when state.fromEdit is set and the store holds the question', async () => {
+    renderAt({ pathname: '/question/q1', state: { fromEdit: true } });
+
+    expect(screen.getByText('Edited title')).toBeInTheDocument();
+    // The flag is cleared so a later reload behaves normally
+    await waitFor(() =>
+      expect(screen.getByTestId('location-state')).toHaveTextContent('null')
+    );
+    expect(getRequests).toHaveLength(0);
+  });
+
+  it('still fetches on a normal visit', async () => {
+    renderAt('/question/q1');
+    await waitFor(() =>
+      expect(getRequests).toEqual(['http://localhost:3000/api/questions/q1'])
+    );
+  });
+
+  it('fetches when fromEdit is set but the store holds a different question', async () => {
+    renderAt({ pathname: '/question/other', state: { fromEdit: true } });
+    await waitFor(() =>
+      expect(getRequests).toEqual(['http://localhost:3000/api/questions/other'])
+    );
   });
 });

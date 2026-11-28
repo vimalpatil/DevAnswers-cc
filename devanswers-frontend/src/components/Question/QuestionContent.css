@@ -69,3 +69,23 @@
 .qcontent-icon-sm {
   font-size: 0.85rem;
 }
+
+/* Header action group: bookmark + edit (spec 002) */
+.qcontent-actions {
+  flex-shrink: 0;
+}
+
+.qcontent-edit-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  line-height: 1;
+  font-size: 1.1rem;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.qcontent-edit-btn:hover,
+.qcontent-edit-btn:focus-visible {
+  color: var(--primary-color);
+}

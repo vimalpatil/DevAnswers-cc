@@ -31,6 +31,32 @@ const unauthorized = () =>
 const isAuthorized = (request) =>
   !!request.headers.get("Authorization")?.startsWith("Bearer ");
 
+// ── Edit endpoints (spec 002) ───────────────────────────────────────────────
+// The caller is Bob (user-2) when his token is sent, otherwise Alice (user-1),
+// which is who unit tests log in as. Posts by anyone else get 403.
+const callerId = (request) =>
+  request.headers.get("Authorization") === `Bearer ${mockUsers.user2.token}`
+    ? mockUsers.user2.userId
+    : mockUsers.user1.userId;
+
+const errorResponse = (status, message) =>
+  HttpResponse.json({ success: false, message }, { status });
+
+const isBlank = (value) => typeof value !== "string" || !value.trim();
+
+const toTagObjects = (tags) =>
+  (Array.isArray(tags) ? tags : String(tags ?? "").split(","))
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .map(
+      (name) =>
+        mockTags.find((t) => t.name === name) || { _id: `tag-${name}`, name },
+    );
+
+const findAnswer = (answerId) =>
+  mockAnswers.find((a) => a._id === answerId) ||
+  mockQuestions.flatMap((q) => q.answers || []).find((a) => a._id === answerId);
+
 export const handlers = [
   // ── Bookmark endpoints ────────────────────────────────────────────────────
   http.get(`${BASE_URL}/bookmarks/ids`, ({ request }) => {
@@ -88,6 +114,61 @@ export const handlers = [
       success: true,
       message: "Bookmark removed",
       data: { questionId: params.questionId, bookmarked: false },
+    });
+  }),
+
+  // ── Edit endpoints (spec 002) ─────────────────────────────────────────────
+  http.put(`${BASE_URL}/questions/:id`, async ({ request, params }) => {
+    if (!isAuthorized(request)) return unauthorized();
+    const question = mockQuestions.find((q) => q._id === params.id);
+    if (!question) return errorResponse(404, "Question not found");
+    if (question.author._id !== callerId(request)) {
+      return errorResponse(403, "Not authorized to update this question");
+    }
+    const body = await request.json();
+    if (isBlank(body.title)) return errorResponse(400, "Title is required");
+    if (isBlank(body.description)) {
+      return errorResponse(400, "Description is required");
+    }
+    const now = new Date().toISOString();
+    // Like the real API, the response carries no `answers`.
+    // eslint-disable-next-line no-unused-vars
+    const { answers, answerCount, ...rest } = question;
+    return HttpResponse.json({
+      success: true,
+      message: "Question updated successfully",
+      data: {
+        ...rest,
+        title: body.title.trim(),
+        description: body.description.trim(),
+        tags: toTagObjects(body.tags),
+        editedAt: now,
+        updatedAt: now,
+      },
+    });
+  }),
+
+  http.put(`${BASE_URL}/answers/:answerId`, async ({ request, params }) => {
+    if (!isAuthorized(request)) return unauthorized();
+    const answer = findAnswer(params.answerId);
+    if (!answer) return errorResponse(404, "Answer not found");
+    if (answer.author._id !== callerId(request)) {
+      return errorResponse(403, "Not authorized to update this answer");
+    }
+    const body = await request.json();
+    if (isBlank(body.answerText)) {
+      return errorResponse(400, "Answer text is required");
+    }
+    const now = new Date().toISOString();
+    return HttpResponse.json({
+      success: true,
+      message: "Answer updated successfully",
+      data: {
+        ...answer,
+        answerText: body.answerText.trim(),
+        editedAt: now,
+        updatedAt: now,
+      },
     });
   }),
 
@@ -187,7 +268,7 @@ export const handlers = [
   // ── Answer endpoints ──────────────────────────────────────────────────────
   http.post(
     `${BASE_URL}/questions/:questionId/answers`,
-    async ({ request, params }) => {
+    async ({ request }) => {
       const body = await request.json();
 
       const newAnswer = {
@@ -247,7 +328,7 @@ export const handlers = [
   }),
 
   // ── User stats endpoint ───────────────────────────────────────────────────
-  http.get(`${BASE_URL}/auth/stats/:userId`, ({ params }) => {
+  http.get(`${BASE_URL}/auth/stats/:userId`, () => {
     return HttpResponse.json({
       success: true,
       data: {

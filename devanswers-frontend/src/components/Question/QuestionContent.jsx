@@ -1,15 +1,20 @@
-import { Card, Row, Col, Badge } from 'react-bootstrap';
-import { useDispatch } from 'react-redux';
-import { FaUser, FaClock } from 'react-icons/fa';
+import { Card, Row, Col, Badge, Button } from 'react-bootstrap';
+import { useDispatch, useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
+import { FaUser, FaClock, FaPen } from 'react-icons/fa';
 import { voteQuestion } from '../../reducers/questionSlice';
 import { formatDate } from '../../utils/timeFormat';
 import VoteButtons from '../Shared/VoteButtons';
 import BookmarkButton from '../Shared/BookmarkButton';
+import EditedIndicator from '../Shared/EditedIndicator';
 import './QuestionContent.css';
 
 const QuestionContent = ({ question }) => {
-  
+
   const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const userInfo = useSelector((state) => state.user?.userInfo);
+  const isAuthor = !!userInfo && question.author?._id === userInfo.userId;
 
   return (
     <>
@@ -20,13 +25,27 @@ const QuestionContent = ({ question }) => {
             <Card.Title as="h2" className="mb-0 qcontent-title">
               {question.title}
             </Card.Title>
-            <BookmarkButton question={question} className="fs-4 mt-1" />
+            <div className="d-flex align-items-center gap-3 mt-1 qcontent-actions">
+              {isAuthor && (
+                <Button
+                  variant="link"
+                  className="qcontent-edit-btn"
+                  aria-label="Edit question"
+                  title="Edit question"
+                  onClick={() => navigate(`/question/${question._id}/edit`)}
+                >
+                  <FaPen />
+                </Button>
+              )}
+              <BookmarkButton question={question} className="fs-4" />
+            </div>
           </div>
-          <div className="d-flex flex-wrap gap-3 gap-sm-4 qcontent-meta">
+          <div className="d-flex flex-wrap align-items-center gap-3 gap-sm-4 qcontent-meta">
             <span className="d-flex align-items-center gap-2">
               <FaClock />
               Asked {formatDate(question.createdAt)}
             </span>
+            <EditedIndicator editedAt={question.editedAt} />
           </div>
         </Card.Body>
       </Card>

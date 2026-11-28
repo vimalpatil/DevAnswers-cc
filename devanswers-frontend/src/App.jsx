@@ -32,6 +32,7 @@ function App() {
             <Route element={<SideBarLayout><Outlet /></SideBarLayout>}>
               <Route path='/' element={<Home />} />
               <Route path='/question/:id' element={<QuestionDetail />} />
+              <Route path='/question/:id/edit' element={<PostQuestion mode="edit" />} />
               <Route path='/ask' element={<PostQuestion />} />
               <Route path='/tags' element={<Tags />} />
               <Route path='/profile' element={<Profile />} />

@@ -28,7 +28,12 @@ const answerSchema = new mongoose.Schema({
     voteCount: {
         type: Number,
         default: 0,
-    }
+    },
+    // Set only when the author changes the content (never on votes).
+    editedAt: {
+        type: Date,
+        default: null,
+    },
 }, { timestamps: true });
 
 const Answer = mongoose.model("Answer", answerSchema);

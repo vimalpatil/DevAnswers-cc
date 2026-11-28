@@ -1,11 +1,19 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Provider } from 'react-redux';
+import { MemoryRouter } from 'react-router-dom';
 import { configureStore } from '@reduxjs/toolkit';
 import QuestionContent from '../../../src/components/Question/QuestionContent';
 import questionReducer from '../../../src/reducers/questionSlice';
 import bookmarkReducer from '../../../src/reducers/bookmarkSlice';
+
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual('react-router-dom');
+  return { ...actual, useNavigate: () => mockNavigate };
+});
 
 const createMockStore = () => {
   return configureStore({
@@ -37,7 +45,9 @@ const renderQuestionContent = (question = mockQuestion) => {
   const store = createMockStore();
   return render(
     <Provider store={store}>
-      <QuestionContent question={question} />
+      <MemoryRouter>
+        <QuestionContent question={question} />
+      </MemoryRouter>
     </Provider>
   );
 };
@@ -101,7 +111,9 @@ describe('QuestionContent bookmark control', () => {
     });
     return render(
       <Provider store={store}>
-        <QuestionContent question={mockQuestion} />
+        <MemoryRouter>
+          <QuestionContent question={mockQuestion} />
+        </MemoryRouter>
       </Provider>
     );
   };
@@ -116,5 +128,69 @@ describe('QuestionContent bookmark control', () => {
   it('reflects bookmarked state from the store', () => {
     renderWithBookmarks({ q1: true });
     expect(screen.getByRole('button', { name: 'Remove bookmark' })).toHaveAttribute('aria-pressed', 'true');
+  });
+});
+
+// Edit control and "edited" indicator (spec 002, AC-1/2/3/15/16)
+describe('QuestionContent edit control', () => {
+  beforeEach(() => {
+    mockNavigate.mockClear();
+  });
+
+  const renderAs = (userInfo, question = mockQuestion) => {
+    const store = configureStore({
+      reducer: {
+        question: questionReducer,
+        user: () => ({ userInfo }),
+      },
+    });
+    return render(
+      <Provider store={store}>
+        <MemoryRouter>
+          <QuestionContent question={question} />
+        </MemoryRouter>
+      </Provider>
+    );
+  };
+
+  it('shows the pencil to the author', () => {
+    renderAs({ userId: 'user-2', token: 'tok' });
+    expect(screen.getByRole('button', { name: 'Edit question' })).toBeInTheDocument();
+  });
+
+  it('hides the pencil from a non-author', () => {
+    renderAs({ userId: 'user-1', token: 'tok' });
+    expect(screen.queryByRole('button', { name: 'Edit question' })).not.toBeInTheDocument();
+  });
+
+  it('hides the pencil from a logged-out user', () => {
+    renderAs(null);
+    expect(screen.queryByRole('button', { name: 'Edit question' })).not.toBeInTheDocument();
+  });
+
+  it('keeps the pencil in the header action group with the bookmark', () => {
+    renderAs({ userId: 'user-2', token: 'tok' });
+    const header = screen.getByText('How do I use the useEffect hook?').parentElement;
+    expect(header).toContainElement(screen.getByRole('button', { name: 'Edit question' }));
+    expect(header).toContainElement(screen.getByRole('button', { name: 'Bookmark question' }));
+  });
+
+  it('navigates client-side to the edit route on click', async () => {
+    renderAs({ userId: 'user-2', token: 'tok' });
+    await userEvent.click(screen.getByRole('button', { name: 'Edit question' }));
+    expect(mockNavigate).toHaveBeenCalledWith('/question/q1/edit');
+  });
+
+  it('shows "edited" with a tooltip when editedAt is set', () => {
+    const editedAt = '2026-02-01T10:00:00.000Z';
+    renderAs(null, { ...mockQuestion, editedAt });
+    const indicator = screen.getByText(/^edited /);
+    expect(indicator).toHaveTextContent('edited Feb 1, 2026');
+    expect(indicator).toHaveAttribute('title', new Date(editedAt).toLocaleString());
+  });
+
+  it('shows no indicator when editedAt is null', () => {
+    renderAs(null, { ...mockQuestion, editedAt: null });
+    expect(screen.queryByText(/^edited /)).not.toBeInTheDocument();
   });
 });
